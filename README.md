@@ -1,6 +1,8 @@
 # Get-IntuneManagementExtensionDiagnostics #
 Go to script [Get-IntuneManagementExtensionDiagnostics.ps1](./Get-IntuneManagementExtensionDiagnostics.ps1)
 
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-Observed_Timeline.png" width=75% height=75%>
+
 This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found actions.
 
 Timeline report includes information about Intune events
@@ -52,6 +54,8 @@ Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 ```
 ### LogViewerUI - better than cmtrace.exe ?-) ###
+
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=75% height=75%>
 
 Script also includes really capable Log Viewer UI when script is started with parameter **-ShowLogViewerUI**
 ```
