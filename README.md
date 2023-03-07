@@ -69,3 +69,6 @@ LogViewerUI has good search and filtering capabilities. Try to filter known log 
 Selecting last line (RELOAD) and OK will reload log file.
    
 Script can merge multiple log files so especially in LogViewerUI you can see Powershell command outputs from AgentExecutor.log
+
+### Backlog: ###
+There are many features in development and planned in future. Stay tuned :)
