@@ -48,7 +48,7 @@ There are many more Parameters but these should get you started.
 ```
 Powershell.exe
 cd C:\ProgramData
-Set-ExecutionPolicy bypass -Scope Prosess
+Set-ExecutionPolicy bypass -Scope Process
 Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ./Get-IntuneManagementExtensionDiagnostics.ps1
 
@@ -66,7 +66,7 @@ Script also includes really capable Log Viewer UI when script is started with pa
 LogViewerUI (Out-GridView) looks a lot like cmtrace.exe tool but it is better because all found Timeline events are added to log for easier debugging.
    
 LogViewerUI has good search and filtering capabilities. Try to filter known log entries in Timeline:  
-**Add criteria -> ProcessruntTime -> is not empty**
+**Add criteria -> ProcessRunTime -> is not empty**
    
 Selecting last line (RELOAD) and OK will reload log file.
    
