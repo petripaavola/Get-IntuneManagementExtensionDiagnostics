@@ -15,14 +15,16 @@ Timeline report includes information about Intune events
 Windows Autopilot ESP phases and other information is also shown on timeline.
 
 ### Usage: ###
-Download script from PowershellGallery with command:  
+**Download** script from PowershellGallery with command:  
 ```
 Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ```
-Run script  
+**Run script**  
 ```
 ./Get-IntuneManagementExtensionDiagnostics.ps1
-  or
+
+# or to get Intune Powershell script names from Graph API
+# use -Online parameter
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 ```
 **-Online** parameter will download Powershell script names from Graph API. Win32App and WinGetApp names are detected from Intune log files.  
