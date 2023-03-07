@@ -23,11 +23,22 @@ Run script
   or
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 ```
+**-Online** parameter will download Powershell script names from Graph API. Win32App and WinGetApp names are detected from Intune log files.  
+-Online parameter requires Intune Powershell management module **Microsoft.Graph.Intune** installation.
+
+You can install Intune Powershell management module to your user account with command
+```
+Install-Module -Name Microsoft.Graph.Intune -Scope CurrentUser
+```
+
+Intune Powershell scripts' outputs and errors can be also shown in Timeline view with parameters  
+**-ShowStdOutInTimeline**  
+**-ShowErrorsInTimeline**  
+This shows instantly what is problem with failed Powershell scripts
 
 There are many more Parameters but these should get you started.
 
-Powershell command outputs and errors can be also shown in Timeline view with parameters **-ShowStdOutInTimeline** and **-ShowErrorsInTimeline**
-This shows instantly what is problem in Powershell scripts
+
 
 **In Autopilot Shift-F10 Command Prompt during Autopilot Pre-Provisioning or Enrollment Status Page**  
 ```
@@ -37,12 +48,12 @@ Set-ExecutionPolicy bypass -Scope Prosess
 Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ./Get-IntuneManagementExtensionDiagnostics.ps1
 
-# Or to get displayName to scripts
+# -Online when you need to get displayNames to Powershell scripts
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 ```
 ### LogViewerUI - better than cmtrace.exe ?-) ###
 
-Script also includes really capable Log Viewer UI if scripts is started with parameter **-ShowLogViewerUI**
+Script also includes really capable Log Viewer UI when script is started with parameter **-ShowLogViewerUI**
 ```
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowLogViewerUI
 ```
