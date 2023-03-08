@@ -102,3 +102,5 @@ There are many features in development and planned in future. Stay tuned :)
 ### Known issues: ###
 *  WinGetApp install may be detected falsepositive wrong. There is WinGet App install fail and empty App name and UserName in Timeline view.
    *  Status: working on this issue
+*  Win32App Uninstall is shown as Install at least in Supercedende case
+   *  Status: working on this issue
