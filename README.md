@@ -1,9 +1,11 @@
 # Get-IntuneManagementExtensionDiagnostics #
+This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found events.
+
+It also includes really capable **LogViewerUI** for manual Intune log(s) viewing.
+
 Go to script [Get-IntuneManagementExtensionDiagnostics.ps1](./Get-IntuneManagementExtensionDiagnostics.ps1)
 
-<img src="./pics/Get-IntuneManagementExtensionDiagnostics-Observed_Timeline.png" width=75% height=75%>
-
-This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found actions.
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-Observed_Timeline.png" width=50% height=50%><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=50% height=50%>
 
 Timeline report includes information about Intune events
 *  **Win32App**
@@ -57,14 +59,14 @@ Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ```
 ### LogViewerUI - better than cmtrace.exe ?-) ###
 
-<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=75% height=75%>
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=50% height=50%>
 
 Script also includes really capable Log Viewer UI when script is started with parameter **-ShowLogViewerUI**
 ```
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowLogViewerUI
 ```
 LogViewerUI (Out-GridView) looks a lot like cmtrace.exe tool but it is better because all found Timeline events are added to log for easier debugging.
-   
+
 LogViewerUI has good search and filtering capabilities. Try to filter known log entries in Timeline:  
 **Add criteria -> ProcessRunTime -> is not empty**
    
@@ -72,5 +74,13 @@ Selecting last line (RELOAD) and OK will reload log file.
    
 Script can merge multiple log files so especially in LogViewerUI you can see Powershell command outputs from AgentExecutor.log
 
+Check [screenshots](https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/tree/main/pics)  
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI02-FilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI03-FilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI04.png" width=200>  
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI05-FilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI06-ClearFilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI07-FastSearch.png" width=200>
+
 ### Backlog: ###
 There are many features in development and planned in future. Stay tuned :)
+
+### Known issues: ###
+*  WinGetApp install may be detected falsepositive wrong. There is WinGet App install fail and empty App name and UserName in Timeline view.
+   *  Status: working on this issue
