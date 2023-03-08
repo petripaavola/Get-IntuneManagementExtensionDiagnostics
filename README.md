@@ -1,7 +1,7 @@
 # Get-IntuneManagementExtensionDiagnostics #
 This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found events.
 
-It also includes really capable **LogViewerUI** for manual Intune log(s) viewing.
+It also includes really capable **-LogViewerUI** for manual Intune log(s) viewing.
 
 Go to script [Get-IntuneManagementExtensionDiagnostics.ps1](./Get-IntuneManagementExtensionDiagnostics.ps1)
 
@@ -37,16 +37,7 @@ You can install Intune Powershell management module to your user account with co
 Install-Module -Name Microsoft.Graph.Intune -Scope CurrentUser
 ```
 
-Intune Powershell scripts' outputs and errors can be also shown in Timeline view with parameters  
-**-ShowStdOutInTimeline**  
-**-ShowErrorsInTimeline**  
-This shows instantly what is problem with failed Powershell scripts
-
-There are many more Parameters but these should get you started.
-
-
-
-**In Autopilot Shift-F10 Command Prompt during Autopilot Pre-Provisioning or Enrollment Status Page**  
+**In Windows Autopilot Shift-F10 Command Prompt during Windows Autopilot Pre-Provisioning or Enrollment Status Page**  
 ```
 Powershell.exe
 cd C:\ProgramData
@@ -57,6 +48,33 @@ Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 # -Online when you need to get displayNames to Powershell scripts
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 ```
+
+### Parameters ###
+**-LogFile**  
+Open log file specifying fullpath to logfile
+```
+./Get-IntuneManagementExtensionDiagnostics.ps1 -LOGFile -LOGFile "C:\temp\MDMDiagReport\IntuneManagementExtension.log"
+```
+**-LogFilesFolder**  
+Open log files folder and show UI where you can select what Intune log files to open
+```
+./Get-IntuneManagementExtensionDiagnostics.ps1 -LogFilesFolder "C:\temp\MDMDiagReport"
+```
+**-ShowAllTimelineEntries**  
+Shows start events on Timeline.
+```
+./Get-IntuneManagementExtensionDiagnostics.ps1 -ShowAllTimelineEntries
+```
+
+
+Intune Powershell scripts' outputs and errors can be also shown in Timeline view with parameters  
+**-ShowStdOutInTimeline**  
+**-ShowErrorsInTimeline**  
+This shows instantly what is problem with failed Powershell scripts
+
+There are many more Parameters but these should get you started.
+
+
 ### LogViewerUI - better than cmtrace.exe ?-) ###
 
 <img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=50% height=50%>
