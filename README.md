@@ -65,7 +65,10 @@ Open log file specifying fullpath to logfile
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -LOGFile -LOGFile "C:\temp\MDMDiagReport\IntuneManagementExtension.log"
 ```
 **-LogFilesFolder**  
-Open log files folder and show UI where you can select what Intune log files to open
+Open log files folder and show UI where you can select what Intune log files to open.
+
+You can copy Intune client logs from **C:\ProgramData\Microsoft\IntuneManagementExtension\Logs** folder and analyze logs in another device.  
+Or you can download Intune logs from remote computer with Intune action **Collect Diagnostics** and analyze in another device.
 ```
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -LogFilesFolder "C:\temp\MDMDiagReport"
 ```
