@@ -1,11 +1,13 @@
 # Get-IntuneManagementExtensionDiagnostics v1.1 #
 This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found events.
 
+For Win32App delivery it also shows summary of download statistics with estimated network bandwidth and **Delivery Optimization** statistics.
+
 It also includes really capable **-LogViewerUI** for manual Intune log(s) viewing.
 
 Go to script [Get-IntuneManagementExtensionDiagnostics.ps1](./Get-IntuneManagementExtensionDiagnostics.ps1)
 
-<img src="./pics/Get-IntuneManagementExtensionDiagnostics-Observed_Timeline.png" width=50% height=50%><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=50% height=50%>
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-Observed_Timeline.png" width=33% height=33%><img src="./pics/Win32App-DeliveryOptimization.png" width=33% height=33%><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=33% height=33%>
 
 Timeline report includes information about Intune events
 *  **Win32App**
