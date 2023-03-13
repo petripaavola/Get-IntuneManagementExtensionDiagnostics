@@ -50,6 +50,14 @@ Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ```
 
 ### Parameters ###
+.\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEntries -AllLogFiles
+
+**-AllLogEntries** **-AllLogFiles**  
+Open all supported log files (IntuneManagementExtension and AgentExecutor) and also show all log events  
+These options prevents showing UI which asks same information
+```
+.\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEntries -AllLogFiles
+```
 **-LogFile**  
 Open log file specifying fullpath to logfile
 ```
@@ -81,7 +89,7 @@ There are many more Parameters but these should get you started.
 
 Script also includes really capable Log Viewer UI when script is started with parameter **-ShowLogViewerUI**
 ```
-./Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowLogViewerUI
+./Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowLogViewerUI -ConvertAllKnownGuidsToClearText
 ```
 LogViewerUI (Out-GridView) looks a lot like cmtrace.exe tool but it is better because all found Timeline events are added to log for easier debugging.
 
