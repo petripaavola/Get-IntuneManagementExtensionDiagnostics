@@ -7,7 +7,7 @@ It also includes really capable **-LogViewerUI** for manual Intune log(s) viewin
 
 Go to script [Get-IntuneManagementExtensionDiagnostics.ps1](./Get-IntuneManagementExtensionDiagnostics.ps1)
 
-<img src="./pics/Get-IntuneManagementExtensionDiagnostics-Observed_Timeline_v1.1.png" width=33% height=33%><img src="./pics/Win32App-DeliveryOptimization.png" width=33% height=33%><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=33% height=33%>
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-Observed_Timeline_v1.1.png" width=33% height=33%><img src="./pics/Win32App-DeliveryOptimization.png" width=33% height=33%><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01_1.1.png" width=33% height=33%>
 
 Timeline report includes information about Intune events
 *  **Win32App**
@@ -104,7 +104,7 @@ Selecting last line (RELOAD) and OK will reload log file.
 Script can merge multiple log files so especially in LogViewerUI you can see Powershell command outputs from AgentExecutor.log
 
 Check [screenshots](https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/tree/main/pics)  
-<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI02-FilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI03-FilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI04.png" width=200>  
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01_1.1.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI02-FilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI03-FilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI04.png" width=200>  
 <img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI05-FilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI06-ClearFilterKnownEvents.png" width=200><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI07-FastSearch.png" width=200>
 
 ### Backlog: ###
