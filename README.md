@@ -1,4 +1,4 @@
-# Get-IntuneManagementExtensionDiagnostics v1.1#
+# Get-IntuneManagementExtensionDiagnostics v1.1 #
 This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found events.
 
 It also includes really capable **-LogViewerUI** for manual Intune log(s) viewing.
