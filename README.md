@@ -50,7 +50,6 @@ Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ```
 
 ### Parameters ###
-.\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEntries -AllLogFiles
 
 **-AllLogEntries** **-AllLogFiles**  
 Open all supported log files (IntuneManagementExtension and AgentExecutor) and also show all log events  
