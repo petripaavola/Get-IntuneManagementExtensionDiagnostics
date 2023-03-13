@@ -119,5 +119,4 @@ There are many features in development and planned in future. Stay tuned :)
 *  Win32App Uninstall is shown as Install at least in Supercedende case
    *  Verified that intent is not gathered right in Win32App and WinGetApp install/uninstall
    *  Status: Fixed in version 1.1
-*  User targeted Powershell scripts may be reported twice in Timeline
-   * Status: Confirmed
+
