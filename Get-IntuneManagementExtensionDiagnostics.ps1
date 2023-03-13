@@ -1,6 +1,6 @@
 ﻿<#PSScriptInfo
 
-.VERSION 1.0
+.VERSION 1.1
 
 .GUID ab5a8b63-97d5-4b1a-a4ab-6dcedbab1eb7
 
@@ -26,7 +26,11 @@
 
 .RELEASENOTES
 Version 1.0:  Original published version
-
+Version 1.1:  Win32App and WinGetApp Required/Available and Install/Uninstall intent is detected right
+              Win32App Supersedence should be recognized (first uninstall and then install)
+              Win32App failed (un)install process is detected
+              Win32App Download Statistics table added
+			  Added export to text files
 #>
 
 <#
@@ -42,14 +46,17 @@ Version 1.0:  Original published version
 
    LogViewerUI (Out-GridView) looks a lot like cmtrace.exe tool but it is better because all found log actions are added to log for easier debugging.
    
-   LogViewerUI has good search and filtering capabilities. Try to filter known log entries in Timeline: Add criteria -> ProcessruntTime -> is not empty
+   LogViewerUI has good search and filtering capabilities. Try to filter known log entries in Timeline: Add criteria -> ProcessRunTime -> is not empty.
    
    Selecting last line (RELOAD) and OK will reload log file.
    
    Script can merge multiple log files so especially in LogViewerUI you can see Powershell command outputs from AgentExecutor.log
    
    Powershell command outputs and errors can be also shown in Timeline view with parameters -ShowStdOutInTimeline and -ShowErrorsInTimeline
-   This shows instantly what is problem in Powershell scripts   
+   This shows instantly what is possible problem in Powershell scripts.
+
+
+   Possible Microsoft 365 App and MSI Line-of-Business Apps (maybe change to Win32App ;) installations are not seen by this report because they are not installed with Intune Management Agent.
 
 
    Author:
@@ -57,41 +64,112 @@ Version 1.0:  Original published version
    Senior Modern Management Principal
    Microsoft MVP - Windows and Devices for IT
    
-   2023-03-07
+   2023-03-12
 
    https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics
 
 .PARAMETER Online
 Download Powershell, Proactive Remediation and custom Compliance policy scripts to get displayName to Timeline report
 
+.PARAMETER LogFile
+Specify log file fullpath
+
+.PARAMETER LogFilesFolder
+Specify folder where to check log files. Will show UI where you can select what logs to process
+
+.PARAMETER LogStartDateTime
+Speficy date and time to start log entries. For example -
+
+.PARAMETER LogEndDateTime
+Speficy date and time to stop log entries
+
 .PARAMETER ShowLogViewerUI
-Shows graphical LogViewerUI where all log entries are easily browsed, searched and filtered
+Shows graphical LogViewerUI where all log entries are easily browsed, searched and filtered in graphical UI
+
+.PARAMETER $LogViewerUI
+Shows graphical LogViewerUI where all log entries are easily browsed, searched and filtered in graphical UI
+
+.PARAMETER AllLogEntries
+Process all found log entries.
+Selecting this parameter will disable UI which asks date/time/hour selection for logs (use for silent commands or scripts)
+
+.PARAMETER AllLogFiles
+Process all found supported log file(s) automatically. This includes *AgentExecutor*.log and *IntuneManagementExtension*.log
+Selecting this parameter will disable UI which asks which log files to process (use for silent commands or scripts)
+
+.PARAMETER Today
+Show log entries from today (from midnight)
+
+.PARAMETER ShowAllTimelineEntries
+Shows more entries in Timeline. This option will show starting messages for events which are not shown by default
+
+.PARAMETER ShowStdOutInTimeline
+Show script StdOut in events. This shows for example what Proactive Remediations will return back to Intune
+
+.PARAMETER ShowErrorsInTimeline
+This will show found error messages from Powershell scripts. Note that Powershell script may succeed and still have errors shown here.
+
+.PARAMETER ShowErrorsSummary
+Show separate all errors summary after Timeline.
+
+.PARAMETER ConvertAllKnownGuidsToClearText
+This parameter replaces all known GUIDs to cleartext in LogViewerUI. Known GUIDs are Win32Apps and WinGetApps by default.
+With -Online option also Powershell scripts, Proactive Remediation scripts and custom Compliance script will get name shown in UI.
+Often this parameter helps a lot debugging log entries in LogViewerUI
+
+.PARAMETER LongRunningPowershellNotifyThreshold
+Threshold (seconds) after Timeline report will show warning message for long running Powershell scripts. Default value is 180 seconds.
+
+.PARAMETER ExportTextFileName
+Export Timeline information and possible Powershell script error to text file.
+This expects either text filename or fullpath to textfile.
 
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 .EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEntries -AllLogFiles
+.EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEntries -ShowAllTimelineEntries
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowLogViewerUI
 .EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowLogViewerUI -ConvertAllKnownGuidsToClearText
+.EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -Today
 .EXAMPLE
-   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -LogStartDateTime 5.3.2023 5.00:00 -LogEndDateTime 7.3.2023 23.00:00
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -LogStartDateTime "10.3.2023 5.00:00" -LogEndDateTime "11.3.2023 23.00:00"
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"
 .EXAMPLE
-    .\Get-IntuneManagementExtensionDiagnostics.ps1 -LOGFile "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"
+    .\Get-IntuneManagementExtensionDiagnostics.ps1 -LogFile "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"
 .EXAMPLE
     .\Get-IntuneManagementExtensionDiagnostics.ps1 -LogFilesFolder "C:\temp\MDMDiagReport"
-
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowStdOutInTimeline
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowErrorsInTimeline
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowErrorsSummary
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ExportTextFileName ExportTextFile.txt
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ExportTextFileName C:\temp\ExportTextFile.txt
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -AllLogEntries -AllLogFiles -ExportTextFileName C:\temp\ExportTextFile.txt
+.EXAMPLE
+   Get-ChildItem "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log" | .\Get-IntuneManagementExtensionDiagnostics.ps1 -AllLogEntries -Online
 .INPUTS
+   Script accepts File object as input. This would be same than specifying Parameter -LogFile
 .OUTPUTS
    None
 .NOTES
+   You can download current version of this script from PowershellGallery with command
+
+   Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 .LINK
-   https://github.com/petripaavola
+   https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics
 #>
 
 [CmdletBinding()]
@@ -101,33 +179,32 @@ Param(
                 ValueFromPipeline=$true,
                 ValueFromPipelineByPropertyName=$true)]
 	[Alias("FullName")]
-    [String]$LOGFile = $null,
+    [String]$LogFile = $null,
+	[Parameter(Mandatory=$false,
+				HelpMessage = 'Enter Intune IME log files folder path',
+                ValueFromPipeline=$false,
+                ValueFromPipelineByPropertyName=$false)]
+    [String]$LogFilesFolder = $null,
 	[Parameter(Mandatory=$false)]
     [Switch]$Online,
 	[Parameter(Mandatory=$false,
-				HelpMessage = 'Enter Intune IME log files folder path',
-                ValueFromPipeline=$true,
-                ValueFromPipelineByPropertyName=$true)]
-    [String]$LogFilesFolder = $null,
-	[Parameter(Mandatory=$false,
-				HelpMessage = 'Enter Start DateTime for log entries (for example 1.3.2023 18:00:00)',
-                ValueFromPipeline=$true,
-                ValueFromPipelineByPropertyName=$true)]
+				HelpMessage = 'Enter Start DateTime for log entries (for example "10.3.2023 5:00:00")',
+                ValueFromPipeline=$false,
+                ValueFromPipelineByPropertyName=$false)]
     $LogStartDateTime = $null,
 	[Parameter(Mandatory=$false,
-				HelpMessage = 'Enter End DateTime for log entries (for example 1.3.2023 19:00:00)',
-                ValueFromPipeline=$true,
-                ValueFromPipelineByPropertyName=$true)]
+				HelpMessage = 'Enter End DateTime for log entries (for example "11.3.2023 23.00:00")',
+                ValueFromPipeline=$false,
+                ValueFromPipelineByPropertyName=$false)]
     $LogEndDateTime = $null,
-	[Parameter(Mandatory=$false,
-				HelpMessage = 'Threshold seconds to highlight long running Powershell scripts',
-                ValueFromPipeline=$true,
-                ValueFromPipelineByPropertyName=$true)]
-    [int]$LongRunningPowershellNotifyThreshold = 180,
 	[Parameter(Mandatory=$false)]
     [Switch]$ShowLogViewerUI,
 	[Parameter(Mandatory=$false)]
+    [Switch]$LogViewerUI,
+	[Parameter(Mandatory=$false)]
     [Switch]$AllLogEntries,
+	[Parameter(Mandatory=$false)]
+    [Switch]$AllLogFiles,
 	[Parameter(Mandatory=$false)]
     [Switch]$Today,
 	[Parameter(Mandatory=$false)]
@@ -139,12 +216,21 @@ Param(
 	[Parameter(Mandatory=$false)]
     [Switch]$ShowErrorsSummary,
 	[Parameter(Mandatory=$false)]
-    [Switch]$ConvertAllKnownGuidsToClearText
-
+    [Switch]$ConvertAllKnownGuidsToClearText,
+	[Parameter(Mandatory=$false,
+				HelpMessage = 'Threshold seconds to highlight long running Powershell scripts',
+                ValueFromPipeline=$true,
+                ValueFromPipelineByPropertyName=$true)]
+	[int]$LongRunningPowershellNotifyThreshold = 180,
+	[Parameter(Mandatory=$false,
+				HelpMessage = 'Enter text (.txt) filename to export info to',
+                ValueFromPipeline=$false,
+                ValueFromPipelineByPropertyName=$false)]
+    [String]$ExportTextFileName=$null
 )
 
 
-Write-Host "Get-IntuneManagementExtensionDiagnostics.ps1 v1.0" -ForegroundColor Cyan
+Write-Host "Get-IntuneManagementExtensionDiagnostics.ps1 v1.1" -ForegroundColor Cyan
 Write-Host "Author: Petri.Paavola@yodamiitti.fi / Microsoft MVP - Windows and Devices for IT"
 Write-Host ""
 
@@ -153,6 +239,7 @@ Write-Host ""
 # Set variables if we are in Windows Autopilot ESP (Enrollment Status Page)
 # Idea is that user can just run the script without checking Parameters first
 if($env:UserName -eq 'defaultUser0') {
+
 	Write-Host "Detected running in Windows Autopilot Enrollment Status Page (ESP)" -ForegroundColor Yellow
 
 	#$LOGFile='C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log'
@@ -160,19 +247,27 @@ if($env:UserName -eq 'defaultUser0') {
 	if((-not $LogFilesFolder) -or (-not $LOGFile)) {
 		Write-Host "Automatically configuring parameters"
 		Write-Host
-		
-		$IntuneLogsPath = 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs'
-		if(Test-Path $IntuneLogsPath) {
-			$SelectedLogFiles = Get-ChildItem -Path $IntuneLogsPath -Filter *.log | Where-Object { ($_.Name -like 'IntuneManagementExtension*.log') -or ($_.Name -like 'AgentExecutor*.log') }
-		} else {
-			Write-Host "Log folder does not exist yet: $IntuneLogsPath"
+
+		$LogFilesFolder = 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs'
+
+		if(-not (Test-Path $LogFilesFolder)) {
+			Write-Host "Log folder does not exist yet: $LogFilesFolder"
 			Write-Host "Try again in a moment..."  -ForegroundColor Yellow
 			Write-Host ""
 			Exit 0
 		}
 	}
 
+	# Process all found supported log files
+	# This will not show file selection UI
+	$AllLogFiles=$True
+
+	# Process all log entries
+	# This will not show time selection UI
 	$AllLogEntries=$True
+
+	# Not sure if this is good or bad by default so not configured by default for now
+	#$ShowAllTimelineEntries=$True
 	
 	if(-not (Test-Path 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log')) {
 		Write-Host "Log file does not exist yet: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"  -ForegroundColor Yellow
@@ -196,6 +291,10 @@ $IdHashtable = @{}
 # Save timeline objects to this List
 $observedTimeline = [System.Collections.Generic.List[PSObject]]@()
 
+# Save application download statistics to this list
+$ApplicationDownloadStatistics = [System.Collections.Generic.List[PSObject]]@()
+
+################ Functions ################
 
 # This is aligned with Michael Niehaus's Get-AutopilotDiagnostics script just in case
 # region Functions
@@ -222,6 +321,73 @@ $observedTimeline = [System.Collections.Generic.List[PSObject]]@()
 	}
 # endregion Functions
 
+	Function Get-AppIntent {
+		Param(
+			$AppId
+			)
+
+		$intent = 'Unknown Intent'
+
+		if($AppId) {
+			if($IdHashtable.ContainsKey($AppId)) {
+				$AppPolicy=$IdHashtable[$AppId]
+
+				if($AppPolicy.Intent) {
+					Switch ($AppPolicy.Intent)
+					{
+						0	{ $intent = 'Not Targeted' }
+						1	{ $intent = 'Available Install' }
+						3	{ $intent = 'Required Install' }
+						4	{ $intent = 'Required Uninstall' }
+						default { $intent = 'Unknown Intent' }
+					}
+				}				
+			}
+		}
+		
+		return $intent
+	}
+
+	Function Get-AppIntentNameForNumber {
+		Param(
+			$IntentNumber
+			)
+
+		Switch ($IntentNumber)
+		{
+			0	{ $intentNumber = 'Not Targeted' }
+			1	{ $intentNumber = 'Available Install' }
+			3	{ $intentNumber = 'Required Install' }
+			4	{ $intentNumber = 'Required Uninstall' }
+			default { $intentNumber = 'Unknown Intent' }
+		}
+		
+		return $intentNumber
+	}
+
+	Function Get-AppName {
+		Param(
+			$AppId
+			)
+
+		$AppName = $null
+
+		if($AppId) {
+			if($IdHashtable.ContainsKey($AppId)) {
+				$AppPolicy=$IdHashtable[$AppId]
+
+				if($AppPolicy.Name) {
+					$AppName = $AppPolicy.Name
+				}				
+			}
+		}
+		
+		return $AppName
+	}
+
+
+
+################ Functions ################
 
 Write-Host "Starting Get-IntuneManagementExtensionDiagnostics`n"
 
@@ -240,17 +406,31 @@ if($LOGFile) {
 } else {
 
 	if($LogFilesFolder) {
+
+		if(-not (Test-Path $LogFilesFolder)) {
+			Write-Host "LogFilesFolder: $LogFilesFolder does not exist" -ForegroundColor Yellow
+			Write-Host "Script will exit" -ForegroundColor Yellow
+			exit 0
+		}
+
 		# Sort files: new files first and IntuneManagementExtension before AgentExecutor
-		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like 'IntuneManagementExtension*.log') -or ($_.Name -like 'AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+
 	} else {
+
 		# Sort files: new files first and IntuneManagementExtension before AgentExecutor
-		$LogFiles = Get-ChildItem -Path 'C:\ProgramData\Microsoft\intunemanagementextension\Logs' -Filter *.log | Where-Object { ($_.Name -like 'IntuneManagementExtension*.log') -or ($_.Name -like 'AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+		$LogFiles = Get-ChildItem -Path 'C:\ProgramData\Microsoft\intunemanagementextension\Logs' -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+
 	}
 	
 	# Show log files in Out-GridView
 	# This variable is automatically configured in ESP
 	if(-not $SelectedLogFiles) {
-		$SelectedLogFiles = $LogFiles | Out-GridView -Title 'Select log file to show in Out-GridView from path C:\ProgramData\Microsoft\intunemanagementextension\Logs' -OutputMode Multiple
+		if($AllLogFiles) {
+			$SelectedLogFiles = $LogFiles
+		} else {
+			$SelectedLogFiles = $LogFiles | Out-GridView -Title 'Select log file to show in Out-GridView from path C:\ProgramData\Microsoft\intunemanagementextension\Logs' -OutputMode Multiple
+		}
 	}
 	
 	if(-not $SelectedLogFiles) {
@@ -343,6 +523,11 @@ if(((-not $LogStartDateTime) -and (-not $LogEndDateTime)) -and (-not $AllLogEntr
 		'LogEndDateTimeObject' = 'Analyzing DateTime later';
 		})
 
+	$LogStartEndTimeOutGridviewEntries.add([PSCustomObject]@{
+		'Log Start and End time' = 'First 24 hours';
+		'LogStartDateTimeObject' = Get-Date 1/1/1900;
+		'LogEndDateTimeObject' = 'Analyzing DateTime later';
+		})
 
 	# Show predefined values in Out-GridView
 	$SelectedTimeFrameObject = $LogStartEndTimeOutGridviewEntries | Out-GridView -Title 'Select timeframe to show log entries' -OutputMode Multiple
@@ -591,7 +776,7 @@ do {
 				
 				# Regex found match
 				$LogMessage = $Matches[1].Trim()
-				
+
 				$Hour = $Matches[2]
 				$Minute = $Matches[3]
 				$Second = $Matches[4]
@@ -600,7 +785,7 @@ do {
 				# Cut milliseconds to 0-999
 				# Time unit is so small that we don't even bother to round the value
 				$MilliSecond = $MilliSecondFull.Substring(0,3)
-				
+
 				$Month = $Matches[6]
 				$Day = $Matches[7]
 				$Year = $Matches[8]
@@ -626,6 +811,12 @@ do {
 				
 				# This works for humans but does not sort
 				#$DateTimeToLogFile = "$($Hour):$($Minute):$($Second).$MilliSecondFull $Day/$Month/$Year"
+
+				# Add leading 0 so sorting works right
+				if($Month -like "?") { $Month = "0$Month" }
+
+				# Add leading 0 so sorting works right
+				if($Day -like "?") { $Day = "0$Day" }
 
 				# This does sorting right way
 				$DateTimeToLogFile = "$Year-$Month-$Day $($Hour):$($Minute):$($Second).$MilliSecondFull"
@@ -726,6 +917,12 @@ do {
 
 				# This works for humans but does not sort
 				#$DateTimeToLogFile = "$($Hour):$($Minute):$($Second).$MilliSecondFull $Day/$Month/$Year"
+
+				# Add leading 0 so sorting works right
+				if($Month -like "?") { $Month = "0$Month" }
+
+				# Add leading 0 so sorting works right
+				if($Day -like "?") { $Day = "0$Day" }
 
 				# This does sorting right way
 				$DateTimeToLogFile = "$Year-$Month-$Day $($Hour):$($Minute):$($Second).$MilliSecondFull"
@@ -838,7 +1035,7 @@ do {
 			# FIXME Copy timestamp from previous log entry
 			
 		}
-		Write-Host "`n"
+		Write-Host ""
 	}
 
 
@@ -868,10 +1065,10 @@ do {
 	# Check if First x minutes/hours was selected
 	if($LogEndDateTimeObject -eq 'Analyzing DateTime later') {
 		# Sort log entries by DateTime and secondary by Line number
+		# because with multiple files we are not organized by default
 		# Find first log entry with LogEntryDateTime value
 		# There is some rare case there could be log entry with empty value
-		#Foreach ($LogEntryObject in $LogEntryList | Sort-Object -Property DateTime, Line) {
-		Foreach ($LogEntryObject in $LogEntryList) {
+		Foreach ($LogEntryObject in $LogEntryList | Sort-Object -Property DateTime, Line) {
 			Try {
 				$FirstLogEntryTimeDate = Get-Date $LogEntryObject.LogEntryDateTime
 				Break
@@ -897,12 +1094,16 @@ do {
 			$LogEndDateTimeObject = ($FirstLogEntryTimeDate).AddHours(6)
 		}
 		
+		if($SelectedTimeFrameObject.'Log Start and End time' -eq 'First 24 hours') {
+			$LogEndDateTimeObject = ($FirstLogEntryTimeDate).AddHours(24)
+		}
+
 		Write-Host "Log entries End time:   $LogEndDateTimeObject`n"
 	}
 
 	Write-Host "Creating report"
-	Write-Host "Log entries Start time: $LogStartDateTimeObject"
-	Write-Host "Log entries End time:   $LogEndDateTimeObject`n"
+	Write-Host "   Start time: $LogStartDateTimeObject"
+	Write-Host "   End time:   $LogEndDateTimeObject`n"
 
 
 	# Filter and Sort objects
@@ -957,10 +1158,14 @@ do {
 
 	# Array
 	$PowershellScriptErrorLogs = @()
-
-
+	$IntuneAppPolicies = $null
+	
+	# This is index of colon character in timeline
+	# This uses -f formatting syntax
+	$ColonIndentInTimeLine = -22
+	
 	$i = 0
-	Do {
+	While ($i -lt $LogEntryList.Count) {
 		# Clear variables in every loop round
 		$LoggedOnUser=$false
 		
@@ -1110,7 +1315,7 @@ do {
 				}
 			}
 
-			Write-Host "DEBUG: We should have UserID and UserSID`n$($IdHashtable | ConvertTo-Json)"
+			#Write-Host "DEBUG: We should have UserID and UserSID`n$($IdHashtable | ConvertTo-Json)"
 			
 			# Cleanup variables
 			$UserIdCustomObject = $null
@@ -1127,7 +1332,6 @@ do {
 		if(($LogEntryList[$i].Message -eq 'EMS Agent Started') -or ($LogEntryList[$i].Message -eq 'EMS Agent Stopped')) {
 
 				$LogEntryList[$i].ProcessRunTime = "$($LogEntryList[$i].Message)"
-				#Write-Host "$($LogEntryList[$i].DateTime) $($LogEntryList[$i].Message) ($($LogEntryList[$i].FileName) line $($LogEntryList[$i].Line))"
 				
 				RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status 'Info' -detail $LogEntryList[$i].Message -logEntry "Line $($LogEntryList[$i].Line)"
 				
@@ -1470,7 +1674,7 @@ do {
 					# Check if Powershell script runtime is longer than configured (default 180 seconds)
 					if($PowershellScriptRunTimeTotalSeconds -gt $LongRunningPowershellNotifyThreshold) {
 						
-						RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status "Warning" -detail "                         Long Powershell script runtime found" -Seconds $PowershellScriptRunTimeTotalSeconds -logEntry "Line $($LogEntryList[$i].Line)" -Color 'Yellow'
+						RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status "Warning" -detail "                            Long Powershell script runtime found" -Seconds $PowershellScriptRunTimeTotalSeconds -logEntry "Line $($LogEntryList[$i].Line)" -Color 'Yellow'
 					}
 					
 					# Set Powershell Script End information to ProcessRuntime property
@@ -1497,7 +1701,6 @@ do {
 								if($ExecutionMsg=$PowershellFailFromJson.ExecutionMsg) {
 									if($ExecutionMsg) {
 										# This makes time line harder to read so moved Error message after timeline
-										#Write-Host "$($LogEntryList[$i+1].DateTime) Powershell script error message $ExecutionMsg ($($LogEntryList[$i].FileName) line $($LogEntryList[$i+1].Line))" -ForegroundColor Red
 
 										$PowershellScriptErrorLogs += "$($LogEntryList[$i].DateTime) End   Powershell script ($PowershellScriptPolicyNameEnd) for user $PowershellScriptForUserNameEndProcess Success: $PowershellScriptPolicyResultEndProcess (Runtime: $PowershellScriptRunTimeTotalSeconds seconds) ($($LogEntryList[$i].FileName) line $($LogEntryList[$i].Line))"
 										$PowershellScriptErrorLogs += "$($LogEntryList[$i+1].DateTime) Powershell script error message ($($LogEntryList[$i].FileName) line $($LogEntryList[$i+1].Line))"
@@ -1512,8 +1715,7 @@ do {
 										if($ShowErrorsInTimeline) {
 											$ExecutionMsg.Split("`n") | Foreach-Object {
 												$ErrorMessageLine = $_
-												#Write-Host "`t`t`t   $ErrorMessageLine" -ForegroundColor Red
-												
+
 												RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status "ErrorLog" -detail "$ErrorMessageLine" -logEntry "$($LogEntryList[$i].FileName) line $($LogEntryList[$i].Line)" -Color 'Red'
 											}
 										} else {
@@ -1533,7 +1735,6 @@ do {
 					
 					RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status "Script ended" -detail "Powershell script $PowershellScriptPolicyNameEnd for user $PowershellScriptForUserNameEndProcess ($PowershellScriptRunTimeTotalSeconds seconds)" -logEntry "Line $($LogEntryList[$i].Line)" -Color 'Yellow'
 				}
-				#Write-Host ""
 					
 				$PowershellScriptStartLogEntryIndex=$null
 
@@ -1547,6 +1748,10 @@ do {
 
 <#
 		# Remove me from Production
+		# Left here for possible future purposes
+		# This catches most Powershell script processes and we could for example check Process runtime
+		# and alert for long running processes
+
 		# region Find Powershell processess
 		# Try to find Powershell process End log entry
 		if($LogEntryList[$i].Message -like '*execution is done*') {
@@ -1755,18 +1960,18 @@ do {
 							# Custom Compliance Script
 							
 							# Set RunTime to Powershell script Start log entry
-							$LogEntryList[$b].ProcessRunTime = "{0,-16} {1,8:n1}" -f "Start Custom Compliance Powershell", $ProcessRunTimeTotalSeconds
+							$LogEntryList[$b].ProcessRunTime = "{0,-16} {1,8:n1}" -f "       Start Custom Compliance Powershell", $ProcessRunTimeTotalSeconds
 
 							# Add RunTime to Powershell script End log entry
-							$LogEntryList[$PowershellScriptEndIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Custom Compliance Powershell", $ProcessRunTimeTotalSeconds
+							$LogEntryList[$PowershellScriptEndIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "       End Custom Compliance Powershell", $ProcessRunTimeTotalSeconds
 						} else {
 							# Proactive Remediation script
 							
 							# Set RunTime to Powershell script Start log entry
-							$LogEntryList[$b].ProcessRunTime = "{0,-16} {1,8:n1}" -f "Start Proactive Detect Powershell", $ProcessRunTimeTotalSeconds
+							$LogEntryList[$b].ProcessRunTime = "{0,-16} {1,8:n1}" -f "       Start Proactive Detect Powershell", $ProcessRunTimeTotalSeconds
 
 							# Add RunTime to Powershell script End log entry
-							$LogEntryList[$PowershellScriptEndIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Proactive Detect Powershell", $ProcessRunTimeTotalSeconds
+							$LogEntryList[$PowershellScriptEndIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "       End Proactive Detect Powershell", $ProcessRunTimeTotalSeconds
 						}
 
 						# Continue to previous log entry
@@ -1836,7 +2041,7 @@ do {
 																
 								RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationDetectStdOutIndex].DateTime -status "StdOut" -detail "$ProactiveRemediationDetectStdOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationDetectStdOutIndex].Line)" -Color 'Yellow'
 								
-								$LogEntryList[$ProactiveRemediationDetectStdOutIndex].ProcessRunTime = "Powershell Detect StdOut"
+								$LogEntryList[$ProactiveRemediationDetectStdOutIndex].ProcessRunTime = "       Powershell Detect StdOut"
 							}
 
 							# Script Error to Timeline if configured and if exists
@@ -1844,14 +2049,24 @@ do {
 								
 								RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationDetectErrorOutputIndex].DateTime -status "ErrorLog" -detail "$ProactiveRemediationDetectErrorOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationDetectStdOutIndex].Line)" -Color 'Yellow'
 								
-								$LogEntryList[$ProactiveRemediationDetectErrorOutputIndex].ProcessRunTime = "Powershell Detect ErrorLog"
+								$LogEntryList[$ProactiveRemediationDetectErrorOutputIndex].ProcessRunTime = "       Powershell Detect ErrorLog"
 								
 							}
 
 							# Post-End message to Timeline if exists
 							if($RemediationDetectPostActionMessageIndex) {
 								
-								RecordStatusToTimeline -date $LogEntryList[$RemediationDetectPostActionMessageIndex].DateTime -status "Info" -detail "                         $($LogEntryList[$RemediationDetectPostActionMessageIndex].Message)" -logEntry "Line $($LogEntryList[$RemediationDetectPostActionMessageIndex].Line)" -Color 'Yellow'
+								$RemediationDetectPostActionMessage = $LogEntryList[$RemediationDetectPostActionMessageIndex].Message
+								if($RemediationDetectPostActionMessage -eq '[HS] no remediation script, skip remediation script') {
+									$RemediationDetectPostActionMessage = '                            remediation script does not exist'
+								}
+
+								if($RemediationDetectPostActionMessage -eq '[HS] remediation is not optional, kick off remediation script') {
+									$RemediationDetectPostActionMessage = '                            kick off remediation script'
+								}
+
+
+								RecordStatusToTimeline -date $LogEntryList[$RemediationDetectPostActionMessageIndex].DateTime -status "Info" -detail "$RemediationDetectPostActionMessage" -logEntry "Line $($LogEntryList[$RemediationDetectPostActionMessageIndex].Line)" -Color 'Yellow'
 							}
 
 							
@@ -1877,7 +2092,7 @@ do {
 																
 								RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationDetectStdOutIndex].DateTime -status "StdOut" -detail "$ProactiveRemediationDetectStdOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationDetectStdOutIndex].Line)" -Color 'Yellow'
 								
-								$LogEntryList[$ProactiveRemediationDetectStdOutIndex].ProcessRunTime = "Powershell Detect StdOut"
+								$LogEntryList[$ProactiveRemediationDetectStdOutIndex].ProcessRunTime = "       Powershell Detect StdOut"
 							}
 
 							# Script Error to Timeline if configured and if exists
@@ -1885,7 +2100,7 @@ do {
 								
 								RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationDetectErrorOutputIndex].DateTime -status "ErrorLog" -detail "$ProactiveRemediationDetectErrorOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationDetectStdOutIndex].Line)" -Color 'Yellow'
 								
-								$LogEntryList[$ProactiveRemediationDetectErrorOutputIndex].ProcessRunTime = "Powershell Detect ErrorLog"
+								$LogEntryList[$ProactiveRemediationDetectErrorOutputIndex].ProcessRunTime = "       Powershell Detect ErrorLog"
 								
 							}
 
@@ -1899,7 +2114,6 @@ do {
 						}
 						
 						# We are done
-						Write-Host
 						
 						# Break out from For-loop
 						Break
@@ -2014,10 +2228,10 @@ do {
 						$PowershellScriptStartIndex = $b
 
 						# Set RunTime to Powershell script Start log entry
-						$LogEntryList[$b].ProcessRunTime = "{0,-16} {1,8:n1}" -f "Start Proactive Remediate Powershell", $ProcessRunTimeTotalSeconds
+						$LogEntryList[$b].ProcessRunTime = "{0,-16} {1,8:n1}" -f "       Start Proactive Remediate Powershell", $ProcessRunTimeTotalSeconds
 
 						# Add RunTime to Powershell script End log entry
-						$LogEntryList[$PowershellScriptEndIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Proactive Remediate Powershell", $ProcessRunTimeTotalSeconds
+						$LogEntryList[$PowershellScriptEndIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "       End Proactive Remediate Powershell", $ProcessRunTimeTotalSeconds
 						
 						# Continue to previous log entry
 						Continue
@@ -2085,7 +2299,7 @@ do {
 															
 							RecordStatusToTimeline -date $LogEntryList[$RemediationScriptStdOutputIndex].DateTime -status "StdOut" -detail "$RemediationScriptStdOutput" -logEntry "Line $($LogEntryList[$RemediationScriptStdOutputIndex].Line)" -Color 'Yellow'
 							
-							$LogEntryList[$RemediationScriptStdOutputIndex].ProcessRunTime = "Powershell Remediate StdOut"
+							$LogEntryList[$RemediationScriptStdOutputIndex].ProcessRunTime = "       Powershell Remediate StdOut"
 						}
 
 						# Script Error to Timeline if configured and if exists
@@ -2093,7 +2307,7 @@ do {
 															
 							RecordStatusToTimeline -date $LogEntryList[$RemediationScriptErrorOutputIndex].DateTime -status "ErrorLog" -detail "$RemediationScriptErrorOutput" -logEntry "Line $($LogEntryList[$RemediationScriptErrorOutputIndex].Line)" -Color 'Yellow'
 							
-							$LogEntryList[$RemediationScriptErrorOutput].ProcessRunTime = "Powershell Remediate ErrorLog"
+							$LogEntryList[$RemediationScriptErrorOutput].ProcessRunTime = "       Powershell Remediate ErrorLog"
 							
 						}
 					
@@ -2127,7 +2341,7 @@ do {
 														
 						RecordStatusToTimeline -date $LogEntryList[$RemediationScriptStdOutputIndex].DateTime -status "StdOut" -detail "$RemediationScriptStdOutput" -logEntry "Line $($LogEntryList[$RemediationScriptStdOutputIndex].Line)" -Color 'Yellow'
 						
-						$LogEntryList[$RemediationScriptStdOutputIndex].ProcessRunTime = "Powershell Remediate StdOut"
+						$LogEntryList[$RemediationScriptStdOutputIndex].ProcessRunTime = "       Powershell Remediate StdOut"
 					}
 
 					# Script Error to Timeline if configured and if exists
@@ -2135,7 +2349,7 @@ do {
 														
 						RecordStatusToTimeline -date $LogEntryList[$RemediationScriptErrorOutputIndex].DateTime -status "ErrorLog" -detail "$RemediationScriptErrorOutput" -logEntry "Line $($LogEntryList[$RemediationScriptErrorOutputIndex].Line)" -Color 'Yellow'
 						
-						$LogEntryList[$RemediationScriptErrorOutput].ProcessRunTime = "Powershell Remediate ErrorLog"
+						$LogEntryList[$RemediationScriptErrorOutput].ProcessRunTime = "       Powershell Remediate ErrorLog"
 						
 					}
 					
@@ -2247,10 +2461,10 @@ do {
 						$PowershellScriptStartIndex = $b
 
 						# Set RunTime to Powershell script Start log entry
-						$LogEntryList[$b].ProcessRunTime = "{0,-16} {1,8:n1}" -f "Start Proactive PostDetect Powershell", $ProcessRunTimeTotalSeconds
+						$LogEntryList[$b].ProcessRunTime = "{0,-16} {1,8:n1}" -f "       Start Proactive PostDetect Powershell", $ProcessRunTimeTotalSeconds
 
 						# Add RunTime to Powershell script End log entry
-						$LogEntryList[$PowershellScriptEndIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Proactive PostDetect Powershell", $ProcessRunTimeTotalSeconds
+						$LogEntryList[$PowershellScriptEndIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "       End Proactive PostDetect Powershell", $ProcessRunTimeTotalSeconds
 						
 						# Continue to previous log entry
 						Continue
@@ -2310,7 +2524,7 @@ do {
 																
 								RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].DateTime -status "StdOut" -detail "$ProactiveRemediationPostDetectStdOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].Line)" -Color 'Yellow'
 								
-								$LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].ProcessRunTime = "Powershell PostDetect StdOut"
+								$LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].ProcessRunTime = "       Powershell PostDetect StdOut"
 							}
 
 							# Script Error to Timeline if configured and if exists
@@ -2318,7 +2532,7 @@ do {
 								
 								RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].DateTime -status "ErrorLog" -detail "$ProactiveRemediationPostDetectErrorOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].Line)" -Color 'Yellow'
 								
-								$LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].ProcessRunTime = "Powershell PostDetect ErrorLog"
+								$LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].ProcessRunTime = "       Powershell PostDetect ErrorLog"
 								
 							}
 
@@ -2347,7 +2561,7 @@ do {
 																
 								RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].DateTime -status "StdOut" -detail "$ProactiveRemediationPostDetectStdOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].Line)" -Color 'Yellow'
 								
-								$LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].ProcessRunTime = "Powershell PostDetect StdOut"
+								$LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].ProcessRunTime = "       Powershell PostDetect StdOut"
 							}
 
 							# Script Error to Timeline if configured and if exists
@@ -2355,7 +2569,7 @@ do {
 								
 								RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].DateTime -status "ErrorLog" -detail "$ProactiveRemediationPostDetectErrorOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].Line)" -Color 'Yellow'
 								
-								$LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].ProcessRunTime = "Powershell PostDetect ErrorLog"
+								$LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].ProcessRunTime = "       Powershell PostDetect ErrorLog"
 								
 							}
 
@@ -2363,7 +2577,6 @@ do {
 						}
 						
 						# We are done
-						Write-Host
 						
 						# Break out from For-loop
 						Break
@@ -2393,7 +2606,7 @@ do {
 															
 							RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].DateTime -status "StdOut" -detail "$ProactiveRemediationPostDetectStdOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].Line)" -Color 'Yellow'
 							
-							$LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].ProcessRunTime = "Powershell PostDetect StdOut"
+							$LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].ProcessRunTime = "       Powershell PostDetect StdOut"
 						}
 
 						# Script Error to Timeline if configured and if exists
@@ -2401,7 +2614,7 @@ do {
 							
 							RecordStatusToTimeline -date $LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].DateTime -status "ErrorLog" -detail "$ProactiveRemediationPostDetectErrorOutput" -logEntry "Line $($LogEntryList[$ProactiveRemediationPostDetectStdOutIndex].Line)" -Color 'Yellow'
 							
-							$LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].ProcessRunTime = "Powershell PostDetect ErrorLog"
+							$LogEntryList[$ProactiveRemediationPostDetectErrorOutputIndex].ProcessRunTime = "       Powershell PostDetect ErrorLog"
 							
 						}
 					
@@ -2410,7 +2623,6 @@ do {
 					
 				}
 			} # For-loop end
-			Write-Verbose ""
 			
 		}
 		# endregion Try to find Proactive PostDetection script run
@@ -2418,145 +2630,547 @@ do {
 
 
 		###############################################
+		# Applications
+		# Win32App
+		# WinGetApp
 
+
+		# Check for application policies
+		if($LogEntryList[$i].Message -like 'Get policies = *') {
+			if($LogEntryList[$i].Message -Match '^Get policies = \[(.*)\]$') {
+				$IntuneAppPolicies = "[$($Matches[1])]" | ConvertFrom-Json
+				
+				# Add policies to hash. Remove existing hash object if exist already
+				Foreach($AppPolicy in $IntuneAppPolicies) {
+					
+					# Check if App exists in Hashtable
+					if($IdHashtable.ContainsKey($AppPolicy.Id)) {
+						
+						# Remove existing object
+						$IdHashtable.Remove($AppPolicy.Id)
+					}
+					
+					# Add object to Hashtable
+					$IdHashtable.Add($AppPolicy.Id , $AppPolicy)
+				}
+			}
+		}
+
+		# Get App Name from AppDownload log entry
+		if($LogEntryList[$i].Message -Like '`[StatusService`] Downloading app (id = (.*), name (.*)\).*$') {
+			if($LogEntryList[$i].Message -Match '^\[StatusService\] Downloading app \(id = (.*), name (.*)\).*') {
+				
+				# Message matches Win32App Name message
+				$Win32AppId = $Matches[1]
+				$Win32AppName = $Matches[2]
+				
+				Write-Verbose "Found Win32App Name $Win32AppName ($Win32AppId)"
+
+				# Add AppId and name to Hashtable
+				if($IdHashtable.ContainsKey($Win32AppId)) {
+					#$IdHashtable[$Win32AppId].id = $Win32AppId
+					
+					if($IdHashtable[$Win32AppId].name -ne $Win32AppName) {
+						Write-Host "Win32App name mismatch found. We should never get this warning" -ForegroundColor Yellow
+						Write-Host "($($IdHashtable[$Win32AppId].name)) ($Win32AppName) ($Win32AppId)" -ForegroundColor Yellow
+					}
+
+					#$IdHashtable[$Win32AppId].displayName = $Win32AppName
+
+				} else {
+					$AppIdCustomObjectProperties = @{
+						id = $Win32AppId
+						name = $Win32AppName
+						displayName = $Win32AppName
+						intent = $null
+					}
+					$AppIdCustomObject = New-Object -TypeName PSObject -Prop $AppIdCustomObjectProperties
+
+					# Create new UserId hashtable entry
+					$IdHashtable.Add($Win32AppId, $AppIdCustomObject)
+				}
+			}
+		}
+
+		# Check for Applications to be installed in ESP phase (Device ESP and User ESP has it's own log entries)
+		if($LogEntryList[$i].Message -like '`[Win32App`]`[ESPAppLockInProcessor`] Found * apps which need to be installed for current phase of ESP. AppIds: *') {
+			if($LogEntryList[$i].Message -Match '^\[Win32App\]\[ESPAppLockInProcessor\] Found (.*) apps which need to be installed for current phase of ESP. AppIds: (.*)$') {
+				$AppCountToInstallInESPPhase = $Matches[1]				
+				$AppIdsToInstallInESPPhase = $Matches[2]
+
+				if($AppIdsToInstallInESPPhase) {
+
+					RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status "Info    / Win32App" -detail "Apps in ESP              $AppCountToInstallInESPPhase Apps to install at ESP phase" -logEntry "Line $($LogEntryList[$i].Line)"
+
+
+					# Several apps are separated by ,
+					$AppIdsToInstallInESPPhaseArray = $AppIdsToInstallInESPPhase.Split(',').Trim()
+
+					Foreach($AppId in $AppIdsToInstallInESPPhaseArray) {
+						# Get name for App
+						if($IdHashtable.ContainsKey($AppId)) {
+							$AppName = $IdHashtable[$AppId].name
+							RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status "Info    / Win32App" -detail "Apps in ESP                 $AppName" -logEntry "Line $($LogEntryList[$i].Line)"
+						}
+
+					}
+
+				}
+
+				#$LogEntryList[$i].ProcessRunTime = "User ESP finished successfully"
+
+				# Continue to next line in Do-while -loop
+				$i++
+				Continue
+
+			}
+		}
+
+		# Case where different version of App of detected after Uninstall than expected
+		# Usually in this case either Uninstall failed or there is wrong detection check in older app (eg. version -gt used)
+		if($LogEntryList[$i].Message -like '`[Win32App`]`[ActionProcessor`] Encountered unexpected state for app with id:*') {
+			# Set RunTime message
+			$LogEntryList[$i].ProcessRunTime = "Warning: Encountered unexpected state for app with id"
+		}
+
+		
 		# region Find Win32App installations
 		# Check if this is ending message for Win32 application installation
-		if($LogEntryList[$i].Message -like '`[Win32App`] Installation is done, collecting result') {
-			$Win32AppInstallEndIndex = $i
-			
-			$ProcessStartTime = $null
-			$ProcessEndTime = $LogEntryList[$i].LogEntryDateTime
+		if(($LogEntryList[$i].Message -like '`[Win32App`] Installation is done, collecting result') -or ($LogEntryList[$i].Message -like '`[Win32App`] Failed to create installer process. Error code = *')) {
+			$FailedToCreateInstallerProcess = $False
+
+
+			# We will follow this Thread
 			$Thread = $LogEntryList[$i].Thread
-			Write-Verbose "Found Win32 App install end process message (Line $($LogEntryList[$i].Line) Thread $Thread): $($LogEntryList[$i].Message)"
 
-			$Win32AppExitCode='N/A'
-			$Win32AppInstallSuccess='N/A'
+			if($LogEntryList[$i].Message -Match '^\[Win32App\] Failed to create installer process. Error code = (.*)$') {
+				$ErrorMessage = $Matches[0]
+				$ErrorCode = $Matches[1]
+				$FailedToCreateInstallerProcess = $True
 
-			# Check if we can find exitCode and Success/failed information in next 20 lines
-			for($b = $Win32AppInstallEndIndex + 1; $b -lt $Win32AppInstallEndIndex + 20; $b++ ) {
-				$Matches=$null
+				$Win32AppInstallStartFailedIndex = $i
+
+				# Set RunTime to Win32App Install Start Failed log entry
+				$LogEntryList[$Win32AppInstallStartFailedIndex].ProcessRunTime = "$ErrorMessage"
+
+				#Write-Host "DEBUG: Found Win32 App error: $ErrorMessage"
+				Write-Verbose "Found Win32 App error: $ErrorMessage"
+
+				# Set index so our search continues in next steps
+				# Because we skip Loop below
+				$b = $i - 1
+
+			} else {
+
+				$Win32AppInstallStartIndex = $null
+				$Win32AppInstallEndIndex = $i
 				
-				# Run this if first because it is much faster than run -Match for every line
-				if($Win32AppExitCode -eq 'N/A') {
-					if(($LogEntryList[$b].Message -Match '^\[Win32App\] lpExitCode (.*)$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
-						$Win32AppExitCode = $Matches[1]
-						Write-Verbose "Found Win32App install exitCode: $Win32AppExitCode"
+				$ProcessStartTime = $null
+				$ProcessEndTime = $LogEntryList[$i].LogEntryDateTime
 
-						# Continue For-loop to next log entry
-						Continue
+				Write-Verbose "Found Win32 App install end process message (Line $($LogEntryList[$i].Line) Thread $Thread): $($LogEntryList[$i].Message)"
+
+				$Win32AppExitCode='N/A'
+				$Win32AppInstallSuccess='N/A'
+
+				# We don't know App Name or Intent yet
+				$LogEntryList[$Win32AppInstallEndIndex].ProcessRunTime = "End Win32App"
+
+				# Check if we can find exitCode and Success/failed information in next 20 lines
+				for($b = $Win32AppInstallEndIndex + 1; $b -lt $Win32AppInstallEndIndex + 20; $b++ ) {
+					$Matches=$null
+					
+					# Run this if first because it is much faster than run -Match for every line
+					if($Win32AppExitCode -eq 'N/A') {
+						if(($LogEntryList[$b].Message -Match '^\[Win32App\] lpExitCode (.*)$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+							$Win32AppExitCode = $Matches[1]
+							Write-Verbose "Found Win32App install exitCode: $Win32AppExitCode"
+
+							# We don't know App Name or Intent yet
+							$LogEntryList[$i].ProcessRunTime = "(ExitCode $Win32AppExitCode"
+
+							# Continue For-loop to next log entry
+							Continue
+						}
 					}
-				}
-				
-				# Run this if first because it is much faster than run -Match for every line
-				if($Win32AppInstallSuccess -eq 'N/A') {
-					if(($LogEntryList[$b].Message -Match '^\[Win32App\] lpExitCode is defined as (.*)$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
-						$Win32AppInstallSuccess = $Matches[1]
-						Write-Verbose "Found Win32App install success: $Win32AppInstallSuccess"
-
-						# Break out from For-loop
-						Break
-					}
-				}
-			} # For-loop end
-			
-			# Check if we can find previous LogEntry that matches same process thread start message
-			$TemporaryObjectIndex = $Win32AppInstallEndIndex - 1
-			Do {
-				if(($LogEntryList[$TemporaryObjectIndex].Message -like '`[Win32App`] process id =*') -and ($LogEntryList[$TemporaryObjectIndex].Thread -eq $Thread)) {
-					# Message matches Win32App install start message
-					$ProcessStartTime = $LogEntryList[$TemporaryObjectIndex].LogEntryDateTime
-					$ProcessRunTime = New-Timespan $ProcessStartTime $ProcessEndTime
-					$ProcessRunTimeTotalSeconds = $ProcessRunTime.TotalSeconds
-					$ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Win32App", $ProcessRunTimeTotalSeconds
 					
-					Write-Verbose "Found Win32 App install Start process message (Line $($LogEntryList[$TemporaryObjectIndex].Line)): $($LogEntryList[$TemporaryObjectIndex].Message)"
-					
-					# Set RunTime to Win32App Install Start log entry
-					$LogEntryList[$TemporaryObjectIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "Start Win32App", $ProcessRunTimeTotalSeconds
+					# Run this if-clause first because it is much faster than run -Match for every line
+					if($Win32AppInstallSuccess -eq 'N/A') {
+						if(($LogEntryList[$b].Message -Match '^\[Win32App\] lpExitCode is defined as (.*)$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+							$Win32AppInstallSuccess = $Matches[1]
+							Write-Verbose "Found Win32App install success: $Win32AppInstallSuccess"
 
-					# Set RunTime to Powershell script Install End log entry
-					$LogEntryList[$i].ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Win32App", $ProcessRunTimeTotalSeconds
-					
-					Write-Verbose "Runtime: $ProcessRunTimeTotalSeconds"
-					
-					Break
-				} else {
-					# Message does not match Win32App install start message
-				}							
-				$TemporaryObjectIndex--
-			} While ($TemporaryObjectIndex -ge 0)
-			
-			# Try to find Win32App name if we have start and end time
-			$Win32AppId = 'N/A'
-			$Win32AppName = 'N/A'
-			if($ProcessStartTime -and $ProcessEndTime) {
-				$Win32AppInstallStartIndex = $TemporaryObjectIndex
-				
-				$Win32AppNameRegex = '\[StatusService\] Downloading app \(id = (.*), name (.*)\).*$'
-				
-				Do {
-					if($LogEntryList[$TemporaryObjectIndex].Message -Match $Win32AppNameRegex) {
-						if($LogEntryList[$TemporaryObjectIndex].Thread -eq $Thread) {
-							
-							# Message matches Win32App Name message
-							$Win32AppId = $Matches[1]
-							$Win32AppName = $Matches[2]
-							$ProcessRunTime = "$ProcessRunTime   $Win32AppName"
-							
-							Write-Verbose "Win32App Name $Win32AppName"
-							
-							#Write-Host "DEBUG: Found Win32 App install Start process message (Line $($LogEntryList[$TemporaryObjectIndex].Line)): $($LogEntryList[$TemporaryObjectIndex].Message)`n"
+							# We don't know App Name or Intent yet
+							$LogEntryList[$i].ProcessRunTime = "$($LogEntryList[$i].ProcessRunTime) $Win32AppInstallSuccess)"
 
-							# Set Win32App Name to Win32App Install Start entry
-							$LogEntryList[$Win32AppInstallStartIndex].ProcessRunTime = "$($LogEntryList[$Win32AppInstallStartIndex].ProcessRunTime)   $Win32AppName"
-							
-							# Set Win32App Name to Win32App Install End entry
-							$LogEntryList[$i].ProcessRunTime = "$($LogEntryList[$i].ProcessRunTime)   $Win32AppName (ExitCode $Win32AppExitCode $Win32AppInstallSuccess)"
-							
-							# Add AppId and name to Hashtable
-							if($IdHashtable.ContainsKey($Win32AppId)) {
-								$IdHashtable[$Win32AppId].id = $Win32AppId
-								$IdHashtable[$Win32AppId].name = $Win32AppName
-								$IdHashtable[$Win32AppId].displayName = $Win32AppName
-
-							} else {
-								$AppIdCustomObjectProperties = @{
-									id = $Win32AppId
-									name = $Win32AppName
-									displayName = $Win32AppName
-								}
-								$AppIdCustomObject = New-Object -TypeName PSObject -Prop $AppIdCustomObjectProperties
-
-								# Create new UserId hashtable entry
-								$IdHashtable.Add($Win32AppId , $AppIdCustomObject)
-							}
-							
-							Break
-						} else {
-							# Found Win32App Name but Thread does not match
-							# Aborting Name find
+							# Break out from For-loop
 							Break
 						}
-					} else {
-						# Message does not match Win32App Name
 					}
-					$TemporaryObjectIndex--
-				} While ($TemporaryObjectIndex -ge 0)
+				} # For-loop end
 				
-				# Change text color depending on Win32App install Success status
-				if($Win32AppInstallSuccess -eq 'Success') {
+				# Check if we can find previous LogEntry that matches same process thread start message
+				$b = $Win32AppInstallEndIndex - 1
+				While ($b -ge 0) {
+					if(($LogEntryList[$b].Message -like '`[Win32App`] process id =*') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+						$Win32AppInstallStartIndex = $b
+
+						# Message matches Win32App install start message
+						$ProcessStartTime = $LogEntryList[$b].LogEntryDateTime
+						$ProcessRunTime = New-Timespan $ProcessStartTime $ProcessEndTime
+						$ProcessRunTimeTotalSeconds = $ProcessRunTime.TotalSeconds
+						#$ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Win32App", $ProcessRunTimeTotalSeconds
+						
+						Write-Verbose "Found Win32 App install Start process message (Line $($LogEntryList[$b].Line)): $($LogEntryList[$b].Message)"
+
+						# FIXME
+						# Set Win32App Name to Win32App Install Start entry
+						#$LogEntryList[$Win32AppInstallStartIndex].ProcessRunTime = "$($LogEntryList[$Win32AppInstallStartIndex].ProcessRunTime)   $Win32AppName"
+						
+						# Set RunTime to Win32App Install Start log entry
+						$LogEntryList[$Win32AppInstallStartIndex].ProcessRunTime = "{0,-16} {1,8:n1}" -f "Start Win32App", $ProcessRunTimeTotalSeconds
+
+						# Set RunTime to Powershell script Install End log entry
+						#$LogEntryList[$i].ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Win32App", $ProcessRunTimeTotalSeconds
+						$LogEntryList[$Win32AppInstallEndIndex].ProcessRunTime = "$($LogEntryList[$i].ProcessRunTime) $($ProcessRunTimeTotalSeconds)sec"
+						
+						Write-Verbose "Runtime: $ProcessRunTimeTotalSeconds"
+						
+						Break
+					} else {
+						# Message does not match Win32App install start message
+					}							
+					$b--
+				}
+			}
+
+			# Try to find Win32App name if we have start and end time
+			$Win32AppId = $null
+			$Win32AppName = $null
+			$Intent = 'Unknown Intent'
+			$TempAppId = $null
+			$BackupIntent = $null
+			$intentDoubleCheck = $null
+			$AppIntentNumberClosestToProcess = $null
+			$AppSupersededUninstall = $null
+			$AppDeliveryOptimization = $null
+
+			if($ProcessStartTime -or $ProcessEndTime -or $FailedToCreateInstallerProcess) {
+				# Remove this line
+				#$Win32AppInstallStartIndex = $b
+				
+				# We are going upwards now
+				While ($b -ge 0) {
+					#Write-Host "$b $($LogEntryList[$b].Message)"
+
+					# Find Win32App Id
+					if(-not $Win32AppId) {
+						if(($LogEntryList[$b].Message -Match '^\[Win32App\] SetCurrentDirectory: C:\\Windows\\IMECache\\(.*)_.*$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+							$Win32AppId = $Matches[1]
+
+							#Write-Host "DEBUG: Found Win32AppId: $Win32AppId"
+
+							# Find name from Hashtable
+							if($IdHashtable.ContainsKey($Win32AppId)) {
+								if($IdHashtable[$Win32AppId].name) {
+									$Win32AppName = $IdHashtable[$Win32AppId].name
+									#Write-Host "DEBUG: Found existing Win32AppName: $Win32AppName`n"
+								}
+							}
+
+							$b--
+							Continue
+						}
+					}
+
+					# Double check intent
+					# If old application is Superceded then in policy intent is not targeted
+					# But if old app version is detected then uninstall is triggered and intent
+					# Need to be checked from this log entry
+					if(-not $AppIntentNumberClosestToProcess) {
+						if(($LogEntryList[$b].Message -Match '^\[Win32App\] ===Step=== InstallBehavior RegularWin32App, Intent (.*), UninstallCommandLine .*$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+							$AppIntentNumberClosestToProcess = $Matches[1]
+
+							#Write-Host "DEBUG: Found InstallBehavior: $AppIntentNumberClosestToProcess"
+							
+							$b--
+							Continue
+						}
+					}
+
 					
-					RecordStatusToTimeline -date $LogEntryList[$Win32AppInstallEndIndex].DateTime -status "Success / Win32App" -detail "[Win32App] App install:  $Win32AppName (ExitCode $Win32AppExitCode $Win32AppInstallSuccess)" -logEntry "Line $($LogEntryList[$Win32AppInstallEndIndex].Line)" -Seconds $ProcessRunTimeTotalSeconds -Color 'Green'
+					# Get Delivery Optimization information
+					if(-not $AppDeliveryOptimization -and $Win32AppId) {
+						# ? is any character because escape `[ and `] didn't seem to work with doublequotes "   ???
+						if(($LogEntryList[$b].Message -Like "?DO TEL? = {*$($Win32AppId)*}") -and ($LogEntryList[$b].Thread -eq $Thread)) {
+							if(($LogEntryList[$b].Message -Match '^\[DO TEL\] = \{(.*)\}$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+								$AppDeliveryOptimization = "{$($Matches[1])}" | ConvertFrom-Json
+								
+								# Disabled now because we don't have Win32App Processsing Start and End entries
+								#$LogEntryList[$b].ProcessRunTime = "   Download and Delivery Optimization summary"
+
+								#Write-Host "DEBUG: Found Delivery Optimization information:`n$($AppDeliveryOptimization | ConvertTo-Json)"
+								
+								$b--
+								Continue
+							}
+						}
+					}
 					
+
+<#					
+					# Get intent: RequiredInstall, RequiredUninstall, AvailableInstall, AvailableUninstall?
+					# We will catch AvailableInstall here which are apps installed from Intune Company Portal
+					#
+					# We will also catch NotTargeted which is superceded application
+					# If we find NotTargeted then we should try to find actual app install after previous version uninstall
+					if(($LogEntryList[$b].Message -Match '^\[Win32App\]\[ActionProcessor\] App with id: (.*), targeted intent: (.*),.*$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+
+						$TempAppId = $Matches[1]
+						if($TempAppId -eq $Win32AppId) {
+							$BackupIntent = $Matches[2]
+							#Write-Host "Found backupIntent: $Win32AppName $BackupIntent ($TempAppId) ($Win32AppId)"
+						} else {
+							#Write-Host "Found backupIntent for wrong id: $Win32AppName $BackupIntent ($TempAppId) ($Win32AppId)"
+						}
+
+						
+						# End loop
+						Break
+					}
+#>
+					
+
+					# Check if we reached start of this round
+					if($LogEntryList[$b].Message -Like '^`[Win32App`]`[V3Processor`] Processing * subgraphs.$') {
+
+						#Write-Host "We reached start Win32App processing phase"
+						#Write-Verbose "We reached start Win32App processing phase"
+						#Write-Host "$($LogEntryList[$b].Message)"
+						
+						# End loop
+						Break
+					}
+
+					# Check if we reached start of this round
+					# In some rare cases this does not catch Win32App installs in ESP phase
+					# Look for ExecMaanger below
+					if($LogEntryList[$b].Message -Match '^\[Win32App\]\[V3Processor\] Processing subgraph with app ids: (.*)$') {
+						$TempAppId = $Matches[1]
+
+						#Write-Host "We reached start Win32App processing phase: $TempAppId"
+						#Write-Verbose "We reached start Win32App processing phase: $TempAppId"
+						#Write-Host "$($LogEntryList[$b].Message)"
+						
+						# End loop
+						Break
+					}
+
+					# This is start entry for Win32App processing
+					# Only shown in ESP phase for rare cases or not shown at all?
+					if($LogEntryList[$b].Message -Like '`[Win32App`] ExecManager: processing targeted app*') {
+
+						#Write-Host "We reached start Win32App processing phase"
+						#Write-Verbose "We reached start Win32App processing phase"
+						#Write-Host "$($LogEntryList[$b].Message)"
+						
+						# End loop
+						Break
+					}
+					
+					# This is start entry for Win32App processing during ESP insome cases
+					# We should never get here
+					if($LogEntryList[$b].Message -Like '`[Win32App`]ExeManager: start processing app policies with count = *') {
+
+						#Write-Host "We reached start Win32App processing phase"
+						#Write-Verbose "We reached start Win32App processing phase"
+						#Write-Host "$($LogEntryList[$b].Message)"
+						
+						# End loop
+						Break
+					}
+
+
+
+					# This is one possible end of subgraph
+					if($LogEntryList[$b].Message -Match '^\[Win32App\]\[V3Processor\] Done processing subgraph.$') {
+
+						#Write-Host "We reached start Win32App processing phase: $TempAppId"
+						#Write-Verbose "We reached start Win32App processing phase: $TempAppId"
+						#Write-Host "$($LogEntryList[$b].Message)"
+						
+						# End loop
+						Break
+					}
+
+					# This is one possible end of subgraph
+					if($LogEntryList[$b].Message -Match '^\[Win32App\]\[V3Processor\] All apps in the subgraph are not applicable due to assignment filters. Processing will be skipped.$') {
+
+						#Write-Host "We reached start Win32App processing phase: $TempAppId"
+						#Write-Verbose "We reached start Win32App processing phase: $TempAppId"
+						#Write-Host "$($LogEntryList[$b].Message)"
+						
+						# End loop
+						Break
+					}
+
+					$b--
+				}
+
+<#
+				# DEBUG Intents
+				if($FailedToCreateInstallerProcess) {
+					Write-Host "DEBUG: $Win32AppName (Line: $($LogEntryList[$Win32AppInstallStartFailedIndex].Line)) AppIntentNameClosestToProcess    : $(Get-AppIntentNameForNumber $AppIntentNumberClosestToProcess)"
+					Write-Host "DEBUG: $Win32AppName (Line: $($LogEntryList[$Win32AppInstallStartFailedIndex].Line)) Last known Intent from App policy: $(Get-AppIntentNameForNumber $IdHashtable[$Win32AppId].Intent)`n"
 				} else {
+					Write-Host "DEBUG: $Win32AppName (Line: $($LogEntryList[$Win32AppInstallEndIndex].Line)) AppIntentNameClosestToProcess    : $(Get-AppIntentNameForNumber $AppIntentNumberClosestToProcess)"
+					Write-Host "DEBUG: $Win32AppName (Line: $($LogEntryList[$Win32AppInstallEndIndex].Line)) Last known Intent from App policy: $(Get-AppIntentNameForNumber $IdHashtable[$Win32AppId].Intent)`n"
+				}
+#>
+
+				# Set Intent placeholder value which is closest Intent found from process start (going upwards)
+				if($AppIntentNumberClosestToProcess) {
+					$intent = Get-AppIntentNameForNumber $AppIntentNumberClosestToProcess
+				} else {
+					# Set fallback Inten value from App Policy
+					$intent = Get-AppIntent $Win32AppId
+				}
+
+				# Get App Intent Name from policy
+				$AppIntentNameFromPolicy = Get-AppIntent $Win32AppId
+
+				# Get App Intent Name from closest Intent found from process start (going upwards)
+				if($AppIntentNumberClosestToProcess) {
+					$AppIntentNameClosestToProcess = Get-AppIntentNameForNumber $AppIntentNumberClosestToProcess
+				}
+
+				# In case of Available Install we have different values
+				# but we will use value from policy if action is RequiredInstall
+				if(($AppIntentNameFromPolicy -eq 'Available Install') -and ($AppIntentNameClosestToProcess -eq 'Required Install')) {
+					$intent = 'Available Install'
+				}
+
+				# In case of supercedence in policy we usually have NotTargeted but action is RequiredUninstall
+				# but can have previous value of Available Install if we have installed old App version just previously (maybe not normal case)
+				#if(($AppIntentNameFromPolicy -eq 'Not Targeted') -and ($AppIntentNameClosestToProcess -eq 'Required Uninstall')) {
+				if(($AppIntentNameFromPolicy -ne 'Required Uninstall') -and ($AppIntentNameClosestToProcess -eq 'Required Uninstall')) {
+					$intent = 'Required Uninstall'
+					$AppSupersededUninstall = $True
+				}
+
+
+				if($AppDeliveryOptimization) {
+					#$DownloadDuration = $AppDeliveryOptimization.DownloadDuration
+					$DownloadDurationDateTimeObject = Get-Date $AppDeliveryOptimization.DownloadDuration
 					
-					RecordStatusToTimeline -date $LogEntryList[$Win32AppInstallEndIndex].DateTime -status "Failed  / Win32App" -detail "[Win32App] App install:  $Win32AppName (ExitCode $Win32AppExitCode $Win32AppInstallSuccess)" -logEntry "Line $($LogEntryList[$Win32AppInstallEndIndex].Line)" -Seconds $ProcessRunTimeTotalSeconds -Color 'Red'
+					# Full seconds
+					$DownloadDuration = New-Timespan -Hours $DownloadDurationDateTimeObject.Hour -Minutes $DownloadDurationDateTimeObject.Minute -Seconds $DownloadDurationDateTimeObject.Second
+					$DownloadDurationSeconds = $DownloadDuration.TotalSeconds
+					
+					$BytesFromPeers = $AppDeliveryOptimization.BytesFromPeers
+					$BytesFromPeersMBRounded = [math]::Round($BytesFromPeers /1MB, 0)
+					
+					$TotalBytesDownloaded = $AppDeliveryOptimization.TotalBytesDownloaded
+					$TotalBytesDownloadedMBExact = $TotalBytesDownloaded /1MB
+					$TotalBytesDownloadedMBRounded = [math]::Round($TotalBytesDownloaded /1MB, 0)
+					
+					$DownloadMBps = $TotalBytesDownloadedMBExact / $DownloadDurationSeconds
+					$DownloadMBps = [math]::Round($DownloadMBps, 1)
+					if($DownloadMBps -eq 0) {
+						$DownloadMBps = 'N/A'
+					}
+
+
+					if($BytesFromPeers -gt 0) {
+						$BytesFromPeersPercentage = ($BytesFromPeers / $TotalBytesDownloaded).ToString('#%')
+					} else {
+						$BytesFromPeersPercentage = '0%'
+					}
+
+					# Add download statistics object to list
+					$ApplicationDownloadStatistics.add([PSCustomObject]@{
+						'AppType' = 'Win32App'
+						'AppName' = $Win32AppName
+						'DL Sec' = $DownloadDurationSeconds
+						'Size (MB)' = $TotalBytesDownloadedMBRounded
+						'MB/s' = $DownloadMBps
+						'Delivery Optimization %' = $BytesFromPeersPercentage
+						})
+					$ApplicationDownloadStatistics.Add($DownloadStats)
+
+					#$DownloadStats = "DL:$($DownloadDurationSeconds)s,$($TotalBytesDownloadedMBRounded)MB,$($DownloadMBps)MB/s,DO:$($BytesFromPeersPercentage)"
+					#Write-Host "$($Win32AppName): $DownloadStats"
+				}
+				
+				if($FailedToCreateInstallerProcess) {
+					# Failed to create process
+
+					if($AppSupersededUninstall) {
+						$detail = "{0,$ColonIndentInTimeLine}{1}  {2}" -f "$Intent", ':', "$Win32AppName (Superseded) $(($LogEntryList[$Win32AppInstallStartFailedIndex].Message).Replace('[Win32App]','').Trim())"
+
+					} else {
+						$detail = "{0,$ColonIndentInTimeLine}{1}  {2}" -f "$Intent", ':', "$Win32AppName $(($LogEntryList[$Win32AppInstallStartFailedIndex].Message).Replace('[Win32App]','').Trim())"
+					}
+
+					# Set RunTime to Win32App Install Start Failed log entry
+					$LogEntryList[$Win32AppInstallStartFailedIndex].ProcessRunTime = "Failed $Win32AppName $intent ($ErrorMessage)"
+
+					RecordStatusToTimeline -date $LogEntryList[$Win32AppInstallStartFailedIndex].DateTime -status "Failed  / Win32App" -detail $detail -logEntry "Line $($LogEntryList[$Win32AppInstallStartFailedIndex].Line)" -Seconds '' -Color 'Red'
+
+					# Set Info message about possible missing uninstall executable
+					# First check that uninstall command is correct.
+					#
+					# Another case could be that there was earlier uninstall process started while application was running
+					# Uninstaller then could not delete main executable because it was locked but it deleted uninstall.exe
+					# And if Detection Check is for main executable then partially uninstalled App is detected for old version
+					# So Intune always detects old App version and is trying to uninstall it before installing new App version but uninstaller is missing
+					$detail = "{0,$ColonIndentInTimeLine}{1}  {2}" -f "", ':', "   Incorrect uninstall command line or uninstall .exe missing?"
+
+					RecordStatusToTimeline -date $LogEntryList[$Win32AppInstallStartFailedIndex].DateTime -status "Info    / Win32App" -detail $detail -logEntry "Line $($LogEntryList[$Win32AppInstallStartFailedIndex].Line)" -Seconds '' -Color 'Yellow'
+
+					if($IdHashtable.ContainsKey($Win32AppId)) {
+						if($IdHashtable[$Win32AppId].UninstallCommandLine) {
+							$UninstallCommandLine = $IdHashtable[$Win32AppId].UninstallCommandLine
+							$detail = "{0,$ColonIndentInTimeLine}{1}  {2}" -f "", ':', "   Uninstall command: $UninstallCommandLine"
+
+							RecordStatusToTimeline -date $LogEntryList[$Win32AppInstallStartFailedIndex].DateTime -status "Info    / Win32App" -detail $detail -logEntry "Line $($LogEntryList[$Win32AppInstallStartFailedIndex].Line)" -Seconds '' -Color 'Yellow'
+
+						}
+					}
+
+					#Write-Host "DEBUG: Write Fail info to Timeline. `$detail=$detail"
+
+				} else {
+					# Set RunTime to Win32App Install Start log entry
+					$LogEntryList[$Win32AppInstallStartIndex].ProcessRunTime = "Start Win32App $Win32AppName $Intent $($ProcessRunTimeTotalSeconds)sec"
+
+					# Set RunTime to Powershell script Install End log entry
+					#$LogEntryList[$i].ProcessRunTime = "{0,-16} {1,8:n1}" -f "End Win32App", $ProcessRunTimeTotalSeconds
+					$LogEntryList[$Win32AppInstallEndIndex].ProcessRunTime = "End Win32App $Win32AppName $Intent $($LogEntryList[$Win32AppInstallEndIndex].ProcessRunTime)"
+
+
+					if($AppSupersededUninstall) {
+						$detail = "{0,$ColonIndentInTimeLine}{1}  {2}" -f "$Intent", ':', "$Win32AppName ($Win32AppExitCode $Win32AppInstallSuccess) (Superseded)"
+					} else {
+						$detail = "{0,$ColonIndentInTimeLine}{1}  {2}" -f "$Intent", ':', "$Win32AppName ($Win32AppExitCode $Win32AppInstallSuccess)"
+					}
+					
+					# Change text color depending on Win32App install Success status
+					if($Win32AppInstallSuccess -eq 'Success') {
+						
+						RecordStatusToTimeline -date $LogEntryList[$Win32AppInstallEndIndex].DateTime -status "Success / Win32App" -detail $detail -logEntry "Line $($LogEntryList[$Win32AppInstallEndIndex].Line)" -Seconds $ProcessRunTimeTotalSeconds -Color 'Green'
+
+					} else {
+						
+						RecordStatusToTimeline -date $LogEntryList[$Win32AppInstallEndIndex].DateTime -status "Failed  / Win32App" -detail $detail -logEntry "Line $($LogEntryList[$Win32AppInstallEndIndex].Line)" -Seconds $ProcessRunTimeTotalSeconds -Color 'Red'
+					}
 				}
 			}
 
 			
-			if(($TemporaryObjectIndex -eq 0) -and (-not $ProcessStartTime)) {
+			if(($b -eq 0) -and (-not $ProcessStartTime)) {
 				# We did not find Win32App install start time
+				
 				Write-Host "Did NOT find matching Win32App install start time for Win32App install in line $LineNumber (Thread=$Thead)`n" -ForegroundColor Yellow
 			}
 			
@@ -2569,6 +3183,7 @@ do {
 		}
 		# endregion Find Win32App installations
 
+
 		# region Find WinGet Application install
 		if($LogEntryList[$i].Message -like '`[Win32App`]`[V3Processor`] Processing subgraph with app ids:*') {
 			if($LogEntryList[$i].Message -Match '^\[Win32App\]\[V3Processor\] Processing subgraph with app ids: (.*)$') {
@@ -2579,6 +3194,9 @@ do {
 				$WinGetInstallationStartedDateTime = $LogEntryList[$i].DateTime
 
 				$WinGetDownloadFirstEntryFound=$false
+				$BackupIntent=$null
+
+				$WinGetAppName = Get-AppName $WinGetAppId
 
 				#Write-Host "DEBUG: Found WinGet installation start. `$i=$i"
 
@@ -2625,7 +3243,7 @@ do {
 							if($IdHashtable.ContainsKey($AppId)) {
 								$IdHashtable[$AppId].id = $AppId
 								$IdHashtable[$AppId].name = $WinGetAppName
-								$IdHashtable[$AppId].displayName = $WinGetAppName
+								#$IdHashtable[$AppId].displayName = $WinGetAppName
 							} else {
 								$AppIdCustomObjectProperties = @{
 									id = $AppId
@@ -2683,9 +3301,31 @@ do {
 					}
 
 
+					# Get intent: RequiredInstall, RequiredUninstall, AvailableInstall, AvailableUninstall?	
+					if(($LogEntryList[$b].Message -Match '^\[Win32App\]\[ActionProcessor\] App with id: (.*), targeted intent: (.*),.*$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+
+						$TempAppId = $Matches[1]
+						$BackupIntent = $Matches[2]
+
+					}
+
+
 					if(($LogEntryList[$b].Message -Match '^\[WinGet\] Install Operation Result has arrived (.*)$')) {
 						$WinGetInstallResult = $Matches[1]
+
+						# No updates available
+						if($WinGetInstallResult -eq 'NoApplicableUpgrade') {
+
+							#$WinGetAppName = Get-AppName $WinGetAppId
+
+							$LogEntryList[$i].ProcessRunTime = "Start WinGet processing App ($WinGetAppName)"
+							$LogEntryList[$b].ProcessRunTime = "NoApplicableUpgrade for WinGetApp ($WinGetAppName)"
+
+							Break
+						}
+			
 						
+			
 						# Calculate install time
 						$ProcessStartTime = $LogEntryList[$i].LogEntryDateTime
 						$ProcessEndTime = $LogEntryList[$b].LogEntryDateTime
@@ -2694,14 +3334,29 @@ do {
 						
 						$WinGetInstallEndDateTime = $LogEntryList[$b].DateTime
 						$LogEntryList[$i].ProcessRunTime = "Start WinGet processing App ($WinGetAppName)"
-						
+
+						$intent = Get-AppIntent $AppId
+						if($intent -eq 'Unknown Intent') {
+							if($BackupIntent) {
+								
+								# This case when App is installed from Intune Company Portal
+								# Then that App is not shown in Get Policies -list
+								# Intent in AvailableInstall then
+								$intent = $BackupIntent
+							}
+						}
+
+						$detail = "{0,$ColonIndentInTimeLine}{1}  {2}" -f "$Intent", ':', "$WinGetAppName for user $WinGetUserName"
+											
 						if($WinGetInstallResult -eq 'OK') {
-							RecordStatusToTimeline -date $LogEntryList[$b].DateTime -status "Success / WinGet" -detail "[WinGet]   App install:  $WinGetAppName for user $WinGetUserName" -Seconds $ProcessRunTimeTotalSeconds -Color 'Green' -logEntry "Line $($LogEntryList[$b].Line)"
+							
+							RecordStatusToTimeline -date $LogEntryList[$b].DateTime -status "Success / WinGet" -detail $detail -Seconds $ProcessRunTimeTotalSeconds -Color 'Green' -logEntry "Line $($LogEntryList[$b].Line)"
 
 							$LogEntryList[$b].ProcessRunTime = "Stop WinGet Install Success ($WinGetAppName) for user $WinGetUserName ($ProcessRunTimeTotalSeconds)"
 							
 						} else {
-							RecordStatusToTimeline -date $LogEntryList[$b].DateTime -status "Failed  / WinGet" -detail "[WinGet]   App install:  $WinGetAppName for user $WinGetUserName" -Seconds $ProcessRunTimeTotalSeconds -Color 'Red' -logEntry "Line $($LogEntryList[$b].Line)"
+							
+							RecordStatusToTimeline -date $LogEntryList[$b].DateTime -status "Failed  / WinGet" -detail $detail -Seconds $ProcessRunTimeTotalSeconds -Color 'Red' -logEntry "Line $($LogEntryList[$b].Line)"
 							
 							$LogEntryList[$b].ProcessRunTime = "Stop WinGet Install Failed ($WinGetAppName) for user $WinGetUserName ($ProcessRunTimeTotalSeconds)"
 						}
@@ -2719,7 +3374,7 @@ do {
 						 -and ($LogEntryList[$b].Thread -eq $Thread)) {
 
 						#Write-Host "DEBUG: Found WinGet Done Processing subgraph log entry"
-						Write-Verbose "Subgraph $WinGetAppId did not include WinGet Application install ($($LogEntryList[$i].FileName) Line $($LogEntryList[$i].Line))"
+						#Write-Verbose "Subgraph $WinGetAppId did not include WinGet Application install ($($LogEntryList[$i].FileName) Line $($LogEntryList[$i].Line))"
 						
 						# Break For-loop
 						Break
@@ -2745,8 +3400,14 @@ do {
 		# region Find WinGet Application install
 		
 		$i++
-	} While ($i -lt $LogEntryList.Count)
+	}
 	# endregion analyze log entries
+
+
+	# Application download statistics
+    Write-Host ""
+    Write-Host "Application download statistics" -ForegroundColor Magenta
+	$ApplicationDownloadStatistics | Format-Table
 
 
 	# This is aligned with Michael Niehaus's Get-AutopilotDiagnostics script just in case
@@ -2810,13 +3471,49 @@ do {
 		}
 	}
 
+
+	############################################
+	#region Export info to text file
+	if($ExportTextFileName) {
+		if(Test-Path $ExportTextFileName) {
+			Write-Host "File $ExportTextFileName already exist. Give another filename to export info to." -ForegroundColor Yellow
+			Write-Host "We will not overwrite existing files" -ForegroundColor Yellow
+			$ExportTextFileName = $null
+		}
+	}
+
+	$ExportDateTime = Get-Date -Format 'yyyyMMdd-HHmmss'
+
+	if($ExportTextFileName) {
+		Write-Host "Exporting information to text file: $ExportTextFileName"
+
+		"Get-IntuneManagementExtensionDiagnostics.ps1 v1.1 report" | Out-File -FilePath $ExportTextFileName -Force
+		"https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics`n" | Out-File -FilePath $ExportTextFileName -Append
+		"Export DateTime: $ExportDateTime`n`n" | Out-File -FilePath $ExportTextFileName -Append
+
+		"Application download statistics`n" | Out-File -FilePath $ExportTextFileName -Append
+		$ApplicationDownloadStatistics | Format-Table | Out-File -FilePath $ExportTextFileName -Append
+
+		"`nOBSERVED TIMELINE`n" | Out-File -FilePath $ExportTextFileName -Append
+		$observedTimeline | Select-Object -Property Date, Status, Detail, Seconds, LogEntry | Format-Table | Out-File -FilePath $ExportTextFileName -Append
+
+		if($PowershellScriptErrorLogs) {		
+			"`n`nPowershell scripts errors`n" | Out-File -FilePath $ExportTextFileName -Append
+			"$($PowershellScriptErrorLogs -Join "`n")"  | Out-File -FilePath $ExportTextFileName -Append
+		}
+	}
+	#endregion Export info to text file
+	###################expor#########################
+
+
+
 	# Command line Parameter -ConvertAllKnownGuidsToClearText
 	if($ConvertAllKnownGuidsToClearText) {
 		Foreach($HashtableKey in $IdHashtable.Keys) {
 			#Write-Host "Processing Hashtable object $($IdHashtable[$HashtableKey].id)"
 			
 			Foreach($LogEntry in $LogEntryList) {
-				$Logentry.Message = ($Logentry.Message).Replace($HashtableKey, "'$($IdHashtable[$HashtableKey].name)'")
+				$Logentry.Message = ($Logentry.Message).Replace($HashtableKey, "'      $($IdHashtable[$HashtableKey].name)      '")
 			}
 			
 			Foreach($LogEntry in $LogEntryList | Where-Object ProcessRuntime -ne $null) {
@@ -2825,7 +3522,7 @@ do {
 		}
 	}
 
-<#  # This on work in progress so disabled at this time
+<#  # This is work in progress so disabled at this time
 	# Export data to json file
 	if($ExportJson) {
 		Write-Host "Export all processed data to json file: IntuneManagementExtensionDiagnostics_export.json"
@@ -2836,7 +3533,7 @@ do {
 	}
 #>
 
-	if($ShowLogViewerUI) {
+	if($ShowLogViewerUI -or $LogViewerUI) {
 		Write-Host "Show logs in Out-GridView"
 		
 		# Show log in Out-GridView
@@ -2845,13 +3542,8 @@ do {
 			# This is needed with multiple files so log entries
 			# can be sorted based on this index column
 
-			# With multiple log files we sort log entries by date
-			#$SelectedLines = $LogEntryList | Where-Object { ($_.LogEntryDateTime -gt $LogStartDateTimeObject) -and ($_.LogEntryDateTime -lt $LogEndDateTimeObject) } | Select-Object -Property Index, FileName, Line, DateTime, Multiline, ProcessRunTime, Message, Component, Context, Type, Thread, File | Sort-Object -Property Index | Out-GridView -Title "Intune IME Log Viewer $($SelectedLogFiles.Name -join " ")" -OutputMode Multiple
-			
 			$SelectedLines = $LogEntryList | Select-Object -Property Index, FileName, Line, DateTime, Multiline, ProcessRunTime, Message, Component, Context, Type, Thread, File | Sort-Object -Property Index | Out-GridView -Title "Intune IME Log Viewer $($SelectedLogFiles.Name -join " ")" -OutputMode Multiple
 		} else {
-			# With single log file sorting is ok by default (line numbers)
-			#$SelectedLines = $LogEntryList | Where-Object { ($_.LogEntryDateTime -gt $LogStartDateTimeObject) -and ($_.LogEntryDateTime -lt $LogEndDateTimeObject) } | Select-Object -Property Index, FileName, Line, DateTime, Multiline, ProcessRunTime, Message, Component, Context, Type, Thread, File | Out-GridView -Title "Intune IME Log Viewer $LogFilePath" -OutputMode Multiple
 			
 			$SelectedLines = $LogEntryList | Select-Object -Property Index, FileName, Line, DateTime, Multiline, ProcessRunTime, Message, Component, Context, Type, Thread, File | Out-GridView -Title "Intune IME Log Viewer $LogFilePath" -OutputMode Multiple
 		}
