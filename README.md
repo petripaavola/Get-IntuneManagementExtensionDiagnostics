@@ -92,6 +92,8 @@ Script also includes really capable Log Viewer UI when script is started with pa
 ```
 LogViewerUI (Out-GridView) looks a lot like cmtrace.exe tool but it is better because all found Timeline events are added to log for easier debugging.
 
+Parameter **-ConvertAllKnownGuidsToClearText** replaces all known GUIDs to real App and script names. This makes viewing log 1000% easier.
+
 LogViewerUI has good search and filtering capabilities. Try to filter known log entries in Timeline:  
 **Add criteria -> ProcessRunTime -> is not empty**
    
