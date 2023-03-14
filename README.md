@@ -27,8 +27,7 @@ Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ```
 ./Get-IntuneManagementExtensionDiagnostics.ps1
 
-# or to get Intune Powershell script names from Graph API
-# use -Online parameter
+# or to get Intune Powershell script names from Graph API use -Online parameter
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 ```
 **-Online** parameter will download Powershell script names from Graph API. Win32App and WinGetApp names are detected from Intune log files.  
@@ -54,8 +53,8 @@ Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ### Parameters ###
 
 **-AllLogEntries** **-AllLogFiles**  
-Open all supported log files (IntuneManagementExtension and AgentExecutor) and also show all log events  
-These options prevents showing UI which asks same information
+Open all supported log files (IntuneManagementExtension and AgentExecutor) automatically and also show all log events  
+**These options prevents showing UIs which asks same information**
 ```
 .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEntries -AllLogFiles
 ```
@@ -82,6 +81,7 @@ Shows start events on Timeline.
 Intune Powershell scripts' outputs and errors can be also shown in Timeline view with parameters  
 **-ShowStdOutInTimeline**  
 **-ShowErrorsInTimeline**  
+**-ShowErrorsSummary**  
 This shows instantly what is problem with failed Powershell scripts
 
 There are many more Parameters but these should get you started.
