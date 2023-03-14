@@ -3,7 +3,7 @@ This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and 
 
 For Win32App delivery it also shows summary of download statistics with estimated network bandwidth and **Delivery Optimization** statistics.
 
-It also includes really capable **-LogViewerUI** for manual Intune log(s) viewing.
+It also includes really capable **-LogViewerUI** for Intune log(s) viewing and troubleshooting.
 
 Go to script [Get-IntuneManagementExtensionDiagnostics.ps1](./Get-IntuneManagementExtensionDiagnostics.ps1)
 
@@ -89,7 +89,7 @@ There are many more Parameters but these should get you started.
 
 ### LogViewerUI - better than cmtrace.exe ?-) ###
 
-<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01.png" width=50% height=50%>
+<img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01_1.1.png" width=50% height=50%>
 
 Script also includes really capable Log Viewer UI when script is started with parameter **-ShowLogViewerUI**
 ```
