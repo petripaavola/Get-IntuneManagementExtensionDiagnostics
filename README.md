@@ -1,4 +1,7 @@
-# Get-IntuneManagementExtensionDiagnostics v1.1 #
+# Get-IntuneManagementExtensionDiagnostics v2.0 #
+**26.9.2023 update  
+New version 2.0 creates HTML report which has more information and for example has additional info in HoverOn ToolTips.**
+
 This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found events.
 
 For Win32App delivery it also shows summary of download statistics with estimated network bandwidth and **Delivery Optimization** statistics.
