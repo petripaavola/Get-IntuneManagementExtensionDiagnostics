@@ -10,7 +10,8 @@ It also includes really capable **-LogViewerUI** for Intune log(s) viewing and t
 
 Go to script [Get-IntuneManagementExtensionDiagnostics.ps1](./Get-IntuneManagementExtensionDiagnostics.ps1)
 
-<img src="./pics/Get-IntuneManagementExtensionDiagnostics-Observed_Timeline_v1.1.png" width=33% height=33%><img src="./pics/Win32App-DeliveryOptimization.png" width=33% height=33%><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01_1.1.png" width=33% height=33%>
+[![Get-IntuneManagementExtensionDiagnostics_v2.0_FullReport_Thumbnail](https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/blob/main/pics/Get-IntuneManagementExtensionDiagnostics_v2.0_FullReport_Thumbnail.png?raw=true)](https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/blob/main/pics/Get-IntuneManagementExtensionDiagnostics_v2.0_FullReport.jpg?raw=true)
+<img src="https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/blob/main/pics/Get-IntuneManagementExtensionDiagnostics_v2.0_DownloadStatistics.png" width=33% height=33%><img src="./pics/Get-IntuneManagementExtensionDiagnostics-LogViewerUI01_1.1.png" width=33% height=33%>
 
 Timeline report includes information about Intune events
 *  **Win32App**
