@@ -1,8 +1,8 @@
 ﻿<#PSScriptInfo
 
-.VERSION 2.0
+.VERSION 2.3
 
-.GUID 87ef29a6-6a9f-49af-a3ba-36ed4438814d
+.GUID f321e845-7139-41d7-b0dd-356ea87931e3
 
 .AUTHOR Petri.Paavola@yodamiitti.fi
 
@@ -37,6 +37,7 @@ Version 2.0:  Huge new feature is to create html report
 			  Console timeline will be available for example for OOBE troubleshooting scenarios
 			  Added App detection events to timeline
 			  Html report entries support HoverOn ToolTips which include more information
+Version 2.3:  Updated script to use Microsoft.Graph.Authentication module to download data from Graph API
 #>
 
 <#
@@ -75,12 +76,13 @@ Version 2.0:  Huge new feature is to create html report
    Senior Modern Management Principal
    Microsoft MVP - Windows and Devices
    
-   2023-09-26
+   2024-05-09
 
    https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics
 
 .PARAMETER Online
 Download Powershell, Remediation and custom Compliance policy scripts to get displayName to Timeline report
+Install Microsoft Graph module with command: Install-Module -Name Microsoft.Graph.Authentication -Scope CurrentUser
 
 .PARAMETER LogFile
 Specify log file fullpath
@@ -269,10 +271,11 @@ Param(
 )
 
 
-$ScriptVersion = "2.0"
+$ScriptVersion = "2.3"
+$TimeOutBetweenGraphAPIRequests = 300
 
 
-Write-Host "Get-IntuneManagementExtensionDiagnostics.ps1 $ScriptVersion beta" -ForegroundColor Cyan
+Write-Host "Get-IntuneManagementExtensionDiagnostics.ps1 $ScriptVersion" -ForegroundColor Cyan
 Write-Host "Author: Petri.Paavola@yodamiitti.fi / Microsoft MVP - Windows and Devices"
 Write-Host ""
 
@@ -311,7 +314,7 @@ if($ShowLogViewerUI -or $LogViewerUI) {
 
 
 
-# Set variables if we are in Windows Autopilot ESP (Enrollment Status Page)
+# Set variables automatically if we are in Windows Autopilot ESP (Enrollment Status Page)
 # Idea is that user can just run the script without checking Parameters first
 if($env:UserName -eq 'defaultUser0') {
 
@@ -323,7 +326,7 @@ if($env:UserName -eq 'defaultUser0') {
 	$DoNotOpenReportAutomatically = $true
 
 	if((-not $LogFilesFolder) -or (-not $LOGFile)) {
-		Write-Host "Automatically configuring parameters"
+		Write-Host "Configuring parameters automatically"
 		Write-Host "Selected: All log files from default Intune IME logs folder"
 		Write-Host "Selected: Do not open HTML report automatically"
 		Write-Host
@@ -349,8 +352,10 @@ if($env:UserName -eq 'defaultUser0') {
 	# This will not show time selection UI
 	$AllLogEntries=$True
 
-	# Not sure if this is good or bad by default so not configured by default for now
-	#$ShowAllTimelineEvents=$True
+	# Show all entries in Timeline
+	# This especially useful if some script or application hangs for a long time
+	# so then you can see start entry for that script or application and you know what is current running Intune deployment
+	$ShowAllTimelineEvents=$True
 	
 	if(-not (Test-Path 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log')) {
 		Write-Host "Log file does not exist yet: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"  -ForegroundColor Yellow
@@ -651,6 +656,78 @@ $Script:observedTimeLineIndexToHTMLTable=0
 	}
 
 
+	function Invoke-MgGraphRequestGetAllPages {
+		param (
+			[Parameter(Mandatory = $true)]
+			[String]$uri
+		)
+
+		$MgGraphRequest = $null
+		$AllMSGraphRequest = $null
+
+		Start-Sleep -Milliseconds $TimeOutBetweenGraphAPIRequests
+
+		try {
+
+			# Save results to this variable
+			$allGraphAPIData = @()
+
+			do {
+
+				$MgGraphRequest = $null
+				$MgGraphRequest = Invoke-MgGraphRequest -Uri $uri -Method 'Get' -OutputType PSObject -ContentType "application/json"
+
+				if($MgGraphRequest) {
+
+					# Test if object has attribute named Value (whether value is null or not)
+					#if((Get-Member -inputobject $MgGraphRequest -name 'Value' -Membertype Properties) -and (Get-Member -inputobject $MgGraphRequest -name '@odata.context' -Membertype Properties)) {
+					if(Get-Member -inputobject $MgGraphRequest -name 'Value' -Membertype Properties) {
+						# Value property exists
+						$allGraphAPIData += $MgGraphRequest.Value
+
+						# Check if we have value starting https:// in attribute @odate.nextLink
+						# and check that $Top= parameter was NOT used. With $Top= parameter we can limit search results
+						# but that almost always results .nextLink being present if there is more data than specified with top
+						# If we specified $Top= ourselves then we don't want to fetch nextLink values
+						#
+						# So get GraphAllPages if there is valid nextlink and $Top= was NOT used in url originally
+						if (($MgGraphRequest.'@odata.nextLink' -like 'https://*') -and (-not ($uri.Contains('$top=')))) {
+							# Save nextLink url to variable and rerun do-loop
+							$uri = $MgGraphRequest.'@odata.nextLink'
+							Start-Sleep -Milliseconds $TimeOutBetweenGraphAPIRequests
+
+							# Continue to next round in Do-loop
+							Continue
+
+						} else {
+							# We dont have nextLink value OR
+							# $top= exists so we return what we got from first round
+							#return $allGraphAPIData
+							$uri = $null
+						}
+						
+					} else {
+						# Sometimes we get results without Value-attribute (eg. getting user details)
+						# We will return all we got as is
+						# because there should not be nextLink page in this case ???
+						return $MgGraphRequest
+					}
+				} else {
+					# Invoke-MGGraphRequest failed so we return false
+					return $null
+				}
+				
+			} while ($uri) # Always run once and continue if there is nextLink value
+
+
+			# We should not end here but just in case
+			return $allGraphAPIData
+
+		} catch {
+			Write-Error "There was error with MGGraphRequest with url $url!"
+			return $null
+		}
+	}
 
 
 	### HTML Report helper functions ###
@@ -928,160 +1005,196 @@ if(((-not $LogStartDateTime) -and (-not $LogEndDateTime)) -and (-not $AllLogEntr
 # Download Powershell scripts, Proactive Remediation scripts and custom Compliance Policy scripts
 if ($Online) {
 
+	$GraphAuthenticationModule = $null
+	$MgContext = $null
+
 	# Test if we are in Enrollment Status Page (ESP) phase
 	# Detect defaultuser0 loggedon
 	if($env:UserName -eq 'defaultUser0') {
 
 		# Make sure we can connect
-		$module = Import-Module Microsoft.Graph.Intune -PassThru -ErrorAction Ignore
-		if (-not $module) {
-			Write-Host "Installing module Microsoft.Graph.Intune"
-			Install-Module Microsoft.Graph.Intune -Force
+		$GraphAuthenticationModule = Import-Module Microsoft.Graph.Authentication -PassThru -ErrorAction Ignore
+		if (-not $GraphAuthenticationModule) {
+
+			Write-Host "Installing module Microsoft.Graph.Authentication"
+			Install-Module Microsoft.Graph.Authentication -Force
+			$Success = $?
+			
+			if($Success) {
+				Write-Host "Success`n" -ForegroundColor Green
+
+				Write-Host "Import module Microsoft.Graph.Authentication"
+				$GraphAuthenticationModule = Import-Module Microsoft.Graph.Authentication -PassThru -ErrorAction Ignore
+
+				if($GraphAuthenticationModule) {
+					# Module imported successfully
+					Write-Host "Success`n" -ForegroundColor Green					
+				} else {
+					# Failed to import module
+					Write-Host "Failed to import module! Skip downloading script names...`n" -ForegroundColor Red
+				}
+			} else {
+				Write-Host "Failed to install module! Skip downloading script names...`n" -ForegroundColor Red
+			}
 		}
-		Import-Module Microsoft.Graph.Intune
+		
+		if($GraphAuthenticationModule) {
+			
+			Write-Host "Connect to Microsoft Graph API"
+			
+			$scopes = "DeviceManagementConfiguration.Read.All"
+			$MgGraph = Connect-MgGraph -scopes $scopes
+			$Success = $?
 
-		$MSGraphEnvironment = Connect-MSGraph
-		Write-Host "Connected to tenant $($graph.TenantId)"
+			if ($Success -and $MgGraph) {
+				Write-Host "Success`n" -ForegroundColor Green
 
+				# Get MgGraph session details
+				$MgContext = Get-MgContext
+				
+				if($MgContext) {
+				
+					$TenantId = $MgContext.TenantId
+					$AdminUserUPN = $MgContext.Account
+
+					Write-Host "Connected to Intune tenant:`n$TenantId`n$AdminUserUPN`n"
+
+				} else {
+					Write-Host "Error getting MgContext information! Skip downloading script names..." -ForegroundColor Red
+				}
+				
+			} else {
+				Write-Host "Could not connect to Graph API! Skip downloading script names..." -ForegroundColor Red
+			}
+			
+		} else {
+			Write-Host "Could not connect to Graph API! Skip downloading script names..."  -ForegroundColor Red
+		}
 	
 	} else {
-		Write-Host "Connecting to Intune using Powershell Intune-Module"
-		Update-MSGraphEnvironment -SchemaVersion 'beta'
+		Write-Host "Connecting to Intune using module Microsoft.Graph.Authentication"
+
+		Write-Host "Import module Microsoft.Graph.Authentication"
+		Import-Module Microsoft.Graph.Authentication
 		$Success = $?
 
-		if (-not $Success) {
-			Write-Host "Failed to update MSGraph Environment schema to Beta!`n" -ForegroundColor Red
-			Write-Host "Make sure you have installed Intune Powershell module"
-			Write-Host "`nYou can install Intune module to your user account with command:"
-			Write-Host "Install-Module -Name Microsoft.Graph.Intune -Scope CurrentUser`n" -ForegroundColor Yellow
-			Write-Host "`nor you can install machine-wide Intune module with command:`nInstall-Module -Name Microsoft.Graph.Intune"
-			Write-Host "More information: https://github.com/microsoft/Intune-PowerShell-SDK"
+		if($Success) {
+			# Module imported successfully
+			Write-Host "Success`n" -ForegroundColor Green
+		} else {
+			Write-Host "Failed"  -ForegroundColor Red
+			Write-Host "Make sure you have installed module Microsoft.Graph.Authentication"
+			Write-Host "You can install module without admin rights to your user account with command:`n`nInstall-Module -Name Microsoft.Graph.Authentication -Scope CurrentUser" -ForegroundColor Yellow
+			Write-Host "`nor you can install machine-wide module with with admin rights using command:`nInstall-Module -Name Microsoft.Graph.Authentication"
+			Write-Host ""
 			Exit 1
 		}
 
-		$MSGraphEnvironment = Connect-MSGraph
+
+		Write-Host "Connect to Microsoft Graph API"
+
+		$scopes = "DeviceManagementConfiguration.Read.All"
+		$MgGraph = Connect-MgGraph -scopes $scopes
 		$Success = $?
 
-		if ($Success -and $MSGraphEnvironment) {
-			$TenantId = $MSGraphEnvironment.tenantId
-			$AdminUserUPN = $MSGraphEnvironment.upn
+		if ($Success -and $MgGraph) {
+			Write-Host "Success`n" -ForegroundColor Green
 
-			Write-Host "Connected to tenant $TenantId as user $AdminUserUPN"
+			# Get MgGraph session details
+			$MgContext = Get-MgContext
+			
+			if($MgContext) {
+			
+				$TenantId = $MgContext.TenantId
+				$AdminUserUPN = $MgContext.Account
+
+				Write-Host "Connected to Intune tenant:`n$TenantId`n$AdminUserUPN`n"
+
+			} else {
+				Write-Host "Error getting MgContext information!`nScript will exit!" -ForegroundColor Red
+				Exit 1
+			}
 			
 		} else {
-			Write-Host "Could not connect to MSGraph!" -ForegroundColor Red
-			Write-Host "Will not download information from Microsoft Intune" -ForegroundColor Yellow
-			Write-Host "Script will exit."
-			Exit 0
+			Write-Host "Could not connect to Graph API!" -ForegroundColor Red
+			Exit 1
 		}
 	}
 
-	if($MSGraphEnvironment) {
+	# Download Intune scripts information if we have connection to Microsoft Graph API
+	if($MgContext) {
+
 		Write-Host "Download Intune Powershell scripts"
 		# Get PowerShell Scripts
-		$url = 'https://graph.microsoft.com/beta/deviceManagement/deviceManagementScripts'
-		$MSGraphRequest = Invoke-MSGraphRequest -Url $url -HttpMethod 'GET'
-		$Success = $?
+		$uri = 'https://graph.microsoft.com/beta/deviceManagement/deviceManagementScripts'
+		$AllIntunePowershellScripts = Invoke-MgGraphRequestGetAllPages -Uri $uri
 
-		if (-not ($Success)) {
-			Write-Error "Error downloading Intune Powershell scripts"
-			#return $null
+		if($AllIntunePowershellScripts) {
+			Write-Host "Done" -ForegroundColor Green
+			
+			# Add Name Property to object
+			$AllIntunePowershellScripts | Foreach-Object { $_ | Add-Member -MemberType noteProperty -Name name -Value $_.displayName }
+			
+			# Add all PowershellScripts to Hashtable
+			$AllIntunePowershellScripts | Foreach-Object { $id = $_.id; $value=$_; $IdHashtable["$id"] = $value }
+			
 		} else {
-			$AllIntunePowershellScripts = Get-MSGraphAllPages -SearchResult $MSGraphRequest
-			$Success = $?
-			if($Success) {
-				Write-Host "Done" -ForegroundColor Green
-				
-				# Add Name Property to object
-				$AllIntunePowershellScripts | Foreach-Object { $_ | Add-Member -MemberType noteProperty -Name name -Value $_.displayName }
-				
-				# Add all PowershellScripts to Hashtable
-				$AllIntunePowershellScripts | Foreach-Object { $id = $_.id; $value=$_; $IdHashtable["$id"] = $value }
-			} else {
-				Write-Error "Error downloading All Intune Powershell scripts"
-			}
+			Write-Error "Did not find Intune Powershell scripts"
 		}
 
-		Start-Sleep 1
+		Start-Sleep -MilliSeconds 500
 		
 		Write-Host "Download Intune Remediations Scripts"
 		# Get Proactive Remediations Scripts
-		$url = 'https://graph.microsoft.com/beta/deviceManagement/deviceHealthScripts'
-		$MSGraphRequest = Invoke-MSGraphRequest -Url $url -HttpMethod 'GET'
-		$Success = $?
+		$uri = 'https://graph.microsoft.com/beta/deviceManagement/deviceHealthScripts'
+		$AllIntuneProactiveRemediationsScripts = Invoke-MgGraphRequestGetAllPages -Uri $uri
 
-		if (-not ($Success)) {
-			Write-Error "Error downloading Intune Proactive Remediations scripts"
-			#return $null
+		if($AllIntuneProactiveRemediationsScripts) {
+			Write-Host "Done" -ForegroundColor Green
+			
+			# Add Name Property to object
+			$AllIntuneProactiveRemediationsScripts | Foreach-Object { $_ | Add-Member -MemberType noteProperty -Name name -Value $_.displayName }
+			
+			# Add all PowershellScripts to Hashtable
+			$AllIntuneProactiveRemediationsScripts | Foreach-Object { $id = $_.id; $value=$_; $IdHashtable["$id"] = $value }
+				
 		} else {
-			$AllIntuneProactiveRemediationsScripts = Get-MSGraphAllPages -SearchResult $MSGraphRequest
-			$Success = $?
-			if($Success) {
-				Write-Host "Done" -ForegroundColor Green
-				
-				# Add Name Property to object
-				$AllIntuneProactiveRemediationsScripts | Foreach-Object { $_ | Add-Member -MemberType noteProperty -Name name -Value $_.displayName }
-				
-				# Add all PowershellScripts to Hashtable
-				$AllIntuneProactiveRemediationsScripts | Foreach-Object { $id = $_.id; $value=$_; $IdHashtable["$id"] = $value }
-			} else {
-				Write-Error "Error downloading All Intune Proactive Remediations scripts"
-			}
+			Write-Error "Did not find Intune Remediation scripts"
 		}
 
-		Start-Sleep 1
+		Start-Sleep -MilliSeconds 500
 
 		Write-Host "Download Intune Windows Device Compliance custom Scripts"
 		# Get Windows Device Compliance custom Scripts
-		$url = 'https://graph.microsoft.com/beta/deviceManagement/deviceComplianceScripts'
-		$MSGraphRequest = Invoke-MSGraphRequest -Url $url -HttpMethod 'GET'
-		$Success = $?
+		$uri = 'https://graph.microsoft.com/beta/deviceManagement/deviceComplianceScripts'
+		$AllIntuneCustomComplianceScripts = Invoke-MgGraphRequestGetAllPages -Uri $uri
 
-		if (-not ($Success)) {
-			Write-Error "Error downloading Intune Windows custom Compliance scripts"
-			#return $null
+		if($AllIntuneCustomComplianceScripts) {
+			Write-Host "Done" -ForegroundColor Green
+			
+			# Add Name Property to object
+			$AllIntuneCustomComplianceScripts | Foreach-Object { $_ | Add-Member -MemberType noteProperty -Name name -Value $_.displayName }
+			
+			# Add all PowershellScripts to Hashtable
+			$AllIntuneCustomComplianceScripts | Foreach-Object { $id = $_.id; $value=$_; $IdHashtable["$id"] = $value }
+			
 		} else {
-			$AllIntuneCustomComplianceScripts = Get-MSGraphAllPages -SearchResult $MSGraphRequest
-			$Success = $?
-			if($Success) {
-				Write-Host "Done" -ForegroundColor Green
-				
-				# Add Name Property to object
-				$AllIntuneCustomComplianceScripts | Foreach-Object { $_ | Add-Member -MemberType noteProperty -Name name -Value $_.displayName }
-				
-				# Add all PowershellScripts to Hashtable
-				$AllIntuneCustomComplianceScripts | Foreach-Object { $id = $_.id; $value=$_; $IdHashtable["$id"] = $value }
-			} else {
-				Write-Error "Error downloading All Intune Windows custom Compliance scripts"
-			}
+			Write-Error "Did not find Intune Windows custom Compliance scripts"
 		}
 		
-		Start-Sleep 1
+		Start-Sleep -MilliSeconds 500
 		
 		Write-Host "Download Intune Filters"
-		$url = 'https://graph.microsoft.com/beta/deviceManagement/assignmentFilters?$select=*'
-		$MSGraphRequest = Invoke-MSGraphRequest -Url $url -HttpMethod 'GET'
-		$Success = $?
+		$uri = 'https://graph.microsoft.com/beta/deviceManagement/assignmentFilters?$select=*'
+		$AllIntuneFilters = Invoke-MgGraphRequestGetAllPages -Uri $uri
 
-		if (-not ($Success)) {
-			Write-Error "Error downloading Intune filters"
-			#return $null
+		if($AllIntuneFilters) {
+			Write-Host "Done" -ForegroundColor Green
+			
+			# Add all Filters to Hashtable
+			$AllIntuneFilters | Foreach-Object { $id = $_.id; $value=$_; $IdHashtable["$id"] = $value }
 		} else {
-			$AllIntuneFilters = Get-MSGraphAllPages -SearchResult $MSGraphRequest
-			$Success = $?
-			if($Success) {
-				Write-Host "Done" -ForegroundColor Green
-				
-				# Add all Filters to Hashtable
-				$AllIntuneFilters | Foreach-Object { $id = $_.id; $value=$_; $IdHashtable["$id"] = $value }
-			} else {
-				Write-Error "Error downloading All Intune filters"
-			}
-			
-			# DEBUG Intune Filters
-			#$AllIntuneFilters | ConvertTo-Json -Depth 5 | Set-Clipboard
-			
-			
+			Write-Error "Did not find Intune filters"
 		}
 		
 	} else {
@@ -2228,6 +2341,7 @@ do {
 
 				$RemediationExitCode = $null
 				$RemediationScriptName = $null
+				$RemediationScriptPowershellScript = $null
 
 				# Try to find displayName
 				if($IdHashtable.ContainsKey($PolicyId)) {
