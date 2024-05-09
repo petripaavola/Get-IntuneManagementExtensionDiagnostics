@@ -1,5 +1,7 @@
-# Get-IntuneManagementExtensionDiagnostics v2.0 #
-**26.9.2023 update  
+# Get-IntuneManagementExtensionDiagnostics v2.3 (2024-05-10) #
+**2024-05-10 update**  
+New version 2.3 uses **Microsoft.Graph.Authentication** module.
+
 New version 2.0 creates HTML report which has more information and for example has additional info in HoverOn ToolTips.**
 
 This script **analyzes** Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found events.
@@ -35,11 +37,11 @@ Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 ```
 **-Online** parameter will download Powershell script names from Graph API. Win32App and WinGetApp names are detected from Intune log files.  
--Online parameter requires Intune Powershell management module **Microsoft.Graph.Intune** installation.
+-Online parameter requires Microsoft Graph module **Microsoft.Graph.Authentication** installation.
 
-You can install Intune Powershell management module to your user account with command
+You can install **Microsoft.Graph.Authentication** module to your user account with command
 ```
-Install-Module -Name Microsoft.Graph.Intune -Scope CurrentUser
+Install-Module -Name Microsoft.Graph.Authentication -Scope CurrentUser
 ```
 
 **In Windows Autopilot Shift-F10 Command Prompt during Windows Autopilot Pre-Provisioning or Enrollment Status Page**  
