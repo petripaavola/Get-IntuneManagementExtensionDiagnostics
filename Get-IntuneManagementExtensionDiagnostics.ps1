@@ -206,26 +206,11 @@ Do not open html report file automatically in browser
 [CmdletBinding()]
 Param(
 	[Parameter(Mandatory=$false,
-				HelpMessage = 'Enter Intune IME log file fullpath',
+				HelpMessage = 'Enter Intune diagnostics cab, zip, directory, or file path',
                 ValueFromPipeline=$true,
                 ValueFromPipelineByPropertyName=$true)]
-	[Alias("FullName")]
+	[Alias("FullName","LogFilesFolder","ZipFile","CabFile")]
     [String]$LogFile = $null,
-	[Parameter(Mandatory=$false,
-				HelpMessage = 'Enter Intune IME log files folder path',
-                ValueFromPipeline=$false,
-                ValueFromPipelineByPropertyName=$false)]
-    [String]$LogFilesFolder = $null,
-	[Parameter(Mandatory=$false,
-				HelpMessage = 'Enter diagnostics zip file path',
-				ValueFromPipeline=$false,
-				ValueFromPipelineByPropertyName=$false)]
-	[String]$ZipFile = $null,
-	[Parameter(Mandatory=$false,
-				HelpMessage = 'Enter the mdm diagnostics cab file path',
-				ValueFromPipeline=$false,
-				ValueFromPipelineByPropertyName=$false)]
-	[String]$Cabfile = $null,
 	[Parameter(Mandatory=$false)]
     [Switch]$Online,
 	[Parameter(Mandatory=$false,
@@ -816,7 +801,7 @@ $Script:observedTimeLineIndexToHTMLTable=0
 			}
 		}
 		if($CabPath) {
-			expand.exe "$CabPath" -F:* "$($env:TEMP)\ESPStatus.tmp\"
+			$null = & expand.exe "$CabPath" -F:* "$($env:TEMP)\ESPStatus.tmp\"
 		}
 		
 		if (-not (Test-Path "$($env:TEMP)\ESPStatus.tmp")) {
@@ -824,117 +809,45 @@ $Script:observedTimeLineIndexToHTMLTable=0
 			exit(0)
 		}
 		else {
-			return "$($env:TEMP)\ESPStatus.tmp"
+			$LogFiles = Get-ChildItem -Path "$($env:TEMP)\ESPStatus.tmp" -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+			return $LogFiles
 		}
 	}
 
 # endregion Functions
 
 ################ Functions ################
-
-Write-Host "Starting Get-IntuneManagementExtensionDiagnostics`n"
-
-if($Cabfile) {
-	if(-not (Test-Path $Cabfile)) {
-		Write-Host "Cab file does not exist: $Cabfile" -ForegroundColor Yellow
-		Write-Host "Script will exit" -ForegroundColor Yellow
-		Write-Host ""
-		Exit 0
-	}
-	else {
-		$LogFilesFolder = Expand-DiagFile -Cabfile $Cabfile
-	}
+$Check = Get-Item $LogFile -ErrorAction SilentlyContinue 2> $null
+switch ($Check) {
+	{$_.Attributes -eq "Directory"} {$LogFiles = Get-ChildItem -Path $LogFile -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending}
+	{$_.Extension -eq ".cab"}{$LogFiles = Expand-DiagFile -CabPath $LogFile}
+	{$_.Extension -eq ".zip"}{$LogFiles = Expand-DiagFile -ZipPath $LogFile}
+	{$_.Extension -eq ".log"}{$SelectedLogFiles = Get-ChildItem -Path $LOGFile}
 }
 
-if($ZipFile) {
-	if(-not (Test-Path $Zipfile)) {
-		Write-Host "Cab file does not exist: $Zipfile" -ForegroundColor Yellow
-		Write-Host "Script will exit" -ForegroundColor Yellow
-		Write-Host ""
-		Exit 0
-	}
-	else {
-		$LogFilesFolder = Expand-DiagFile -ZipFile $ZipFile
-	}
+if([string]::IsNullOrEmpty($LogFile)){
+	# Running report using local computer's Intune log files
+	# Save Computer Name
+	$ComputerNameForReport = $env:ComputerName
+
+	# Sort files: new files first and IntuneManagementExtension before AgentExecutor
+	$LogFiles = Get-ChildItem -Path 'C:\ProgramData\Microsoft\intunemanagementextension\Logs' -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
 }
 
-# If LogFilePath is not specified then show log files in Out-GridView
-# from folder C:\ProgramData\Microsoft\intunemanagementextension\Logs
-if($LOGFile) {
-
-	if(-not (Test-Path $LOGFile)) {
-		Write-Host "Log file does not exist: $LOGFile" -ForegroundColor Yellow
-		Write-Host "Script will exit" -ForegroundColor Yellow
-		Write-Host ""
-		Exit 0
-	}
-	$SelectedLogFiles = Get-ChildItem -Path $LOGFile
-	
-} 
-elseif($Cabfile) {
-	if(-not (Test-Path $Cabfile)) {
-		Write-Host "Cab file does not exist: $Cabfile" -ForegroundColor Yellow
-		Write-Host "Script will exit" -ForegroundColor Yellow
-		Write-Host ""
-		Exit 0
-	}
-	else {
-		$LogFilesFolder = Expand-DiagFile -Cabfile $Cabfile
-		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-	}
-}
-
-elseif($ZipFile) {
-	if(-not (Test-Path $Zipfile)) {
-		Write-Host "Cab file does not exist: $Zipfile" -ForegroundColor Yellow
-		Write-Host "Script will exit" -ForegroundColor Yellow
-		Write-Host ""
-		Exit 0
-	}
-	else {
-		$LogFilesFolder = Expand-DiagFile -ZipFile $ZipFile
-		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-	}
-} 
-else {
-	if($LogFilesFolder) {
-
-		if(-not (Test-Path $LogFilesFolder)) {
-			Write-Host "LogFilesFolder: $LogFilesFolder does not exist" -ForegroundColor Yellow
-			Write-Host "Script will exit" -ForegroundColor Yellow
-			exit 0
-		}
-
-		# Sort files: new files first and IntuneManagementExtension before AgentExecutor
-		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-
+# Show log files in Out-GridView
+# This variable is automatically configured in ESP
+if(-not $SelectedLogFiles) {
+	if($AllLogFiles) {
+		$SelectedLogFiles = $LogFiles
 	} else {
-		# Running report using local computer's Intune log files
-
-		# Save Computer Name
-		$ComputerNameForReport = $env:ComputerName
-		
-		# Sort files: new files first and IntuneManagementExtension before AgentExecutor
-		$LogFiles = Get-ChildItem -Path 'C:\ProgramData\Microsoft\intunemanagementextension\Logs' -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-
-	}
-	
-	# Show log files in Out-GridView
-	# This variable is automatically configured in ESP
-	if(-not $SelectedLogFiles) {
-		if($AllLogFiles) {
-			$SelectedLogFiles = $LogFiles
-		} else {
-			$SelectedLogFiles = $LogFiles | Out-GridView -Title 'Select log file to show in Out-GridView from path C:\ProgramData\Microsoft\intunemanagementextension\Logs' -OutputMode Multiple
-		}
-	}
-	
-	if(-not $SelectedLogFiles) {
-		Write-Host "No log file(s) selected. Script will exit!`n" -ForegroundColor Yellow
-		Exit 0
+		$SelectedLogFiles = $LogFiles | Out-GridView -Title 'Select log file to show in Out-GridView from path C:\ProgramData\Microsoft\intunemanagementextension\Logs' -OutputMode Multiple
 	}
 }
 
+if(-not $SelectedLogFiles) {
+	Write-Host "No log file(s) selected. Script will exit!`n" -ForegroundColor Yellow
+	Exit 0
+}
 
 # Check whether we show time selection on Out-GridView or not
 if(((-not $LogStartDateTime) -and (-not $LogEndDateTime)) -and (-not $AllLogEntries) -and (-not $Today)) {
