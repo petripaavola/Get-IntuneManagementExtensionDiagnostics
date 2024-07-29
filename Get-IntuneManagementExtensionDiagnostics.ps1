@@ -216,6 +216,16 @@ Param(
                 ValueFromPipeline=$false,
                 ValueFromPipelineByPropertyName=$false)]
     [String]$LogFilesFolder = $null,
+	[Parameter(Mandatory=$false,
+				HelpMessage = 'Enter diagnostics zip file path',
+				ValueFromPipeline=$false,
+				ValueFromPipelineByPropertyName=$false)]
+	[String]$ZipFile = $null,
+	[Parameter(Mandatory=$false,
+				HelpMessage = 'Enter the mdm diagnostics cab file path',
+				ValueFromPipeline=$false,
+				ValueFromPipelineByPropertyName=$false)]
+	[String]$Cabfile = $null,
 	[Parameter(Mandatory=$false)]
     [Switch]$Online,
 	[Parameter(Mandatory=$false,
@@ -271,7 +281,7 @@ Param(
 )
 
 
-$ScriptVersion = "2.3"
+$ScriptVersion = "2.4"
 $TimeOutBetweenGraphAPIRequests = 300
 
 
@@ -783,11 +793,70 @@ $Script:observedTimeLineIndexToHTMLTable=0
 		return $output
 	}
 
+	function Expand-DiagFile {
+		Param(
+			$CabPath,
+			$ZipPath
+		)
+
+		if (-not (Test-Path "$($env:TEMP)\ESPStatus.tmp")) {
+			New-Item -Path "$($env:TEMP)\ESPStatus.tmp" -ItemType "directory" | Out-Null
+		}
+		Remove-Item -Path "$($env:TEMP)\ESPStatus.tmp\*" -Force -Recurse 
+
+		if($ZipPath) {
+			if (-not (Test-Path "$($env:TEMP)\ESPzip.tmp")) {
+				New-Item -Path "$($env:TEMP)\ESPzip.tmp" -ItemType "directory" | Out-Null
+			}
+			Remove-Item -Path "$($env:TEMP)\ESPzip.tmp\*" -Force -Recurse
+			Expand-Archive -Path $ZipPath -DestinationPath "$($env:TEMP)\ESPzip.tmp"
+			
+			Get-ChildItem -Path "$($env:TEMP)\ESPzip.tmp\" -Filter mdmlogs*.cab -Recurse | ForEach-Object {
+				$null = & expand.exe "$($_.FullName)" -F:* "$($env:TEMP)\ESPStatus.tmp\"
+			}
+		}
+		if($CabPath) {
+			expand.exe "$CabPath" -F:* "$($env:TEMP)\ESPStatus.tmp\"
+		}
+		
+		if (-not (Test-Path "$($env:TEMP)\ESPStatus.tmp")) {
+			Write-Error "Unable to extract file"
+			exit(0)
+		}
+		else {
+			return "$($env:TEMP)\ESPStatus.tmp"
+		}
+	}
+
 # endregion Functions
 
 ################ Functions ################
 
 Write-Host "Starting Get-IntuneManagementExtensionDiagnostics`n"
+
+if($Cabfile) {
+	if(-not (Test-Path $Cabfile)) {
+		Write-Host "Cab file does not exist: $Cabfile" -ForegroundColor Yellow
+		Write-Host "Script will exit" -ForegroundColor Yellow
+		Write-Host ""
+		Exit 0
+	}
+	else {
+		$LogFilesFolder = Expand-DiagFile -Cabfile $Cabfile
+	}
+}
+
+if($ZipFile) {
+	if(-not (Test-Path $Zipfile)) {
+		Write-Host "Cab file does not exist: $Zipfile" -ForegroundColor Yellow
+		Write-Host "Script will exit" -ForegroundColor Yellow
+		Write-Host ""
+		Exit 0
+	}
+	else {
+		$LogFilesFolder = Expand-DiagFile -ZipFile $ZipFile
+	}
+}
 
 # If LogFilePath is not specified then show log files in Out-GridView
 # from folder C:\ProgramData\Microsoft\intunemanagementextension\Logs
@@ -801,8 +870,33 @@ if($LOGFile) {
 	}
 	$SelectedLogFiles = Get-ChildItem -Path $LOGFile
 	
-} else {
+} 
+elseif($Cabfile) {
+	if(-not (Test-Path $Cabfile)) {
+		Write-Host "Cab file does not exist: $Cabfile" -ForegroundColor Yellow
+		Write-Host "Script will exit" -ForegroundColor Yellow
+		Write-Host ""
+		Exit 0
+	}
+	else {
+		$LogFilesFolder = Expand-DiagFile -Cabfile $Cabfile
+		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+	}
+}
 
+elseif($ZipFile) {
+	if(-not (Test-Path $Zipfile)) {
+		Write-Host "Cab file does not exist: $Zipfile" -ForegroundColor Yellow
+		Write-Host "Script will exit" -ForegroundColor Yellow
+		Write-Host ""
+		Exit 0
+	}
+	else {
+		$LogFilesFolder = Expand-DiagFile -ZipFile $ZipFile
+		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+	}
+} 
+else {
 	if($LogFilesFolder) {
 
 		if(-not (Test-Path $LogFilesFolder)) {
