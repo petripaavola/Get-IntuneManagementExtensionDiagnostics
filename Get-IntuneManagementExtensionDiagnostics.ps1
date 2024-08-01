@@ -93,6 +93,12 @@ Specify folder where to check log files. Will show UI where you can select what 
 .PARAMETER LogStartDateTime
 Specify date and time to start log entries. For example -
 
+.PARAMETER CabFile
+Specify a cab file to extract and analyze
+
+.PARAMETER ZipFile
+Specify a zip file to extract and analyze
+
 .PARAMETER LogEndDateTime
 Specify date and time to stop log entries
 
