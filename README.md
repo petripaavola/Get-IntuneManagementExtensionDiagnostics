@@ -67,7 +67,7 @@ Open all supported log files (IntuneManagementExtension and AgentExecutor) autom
 **-LogFile**  
 Open log file specifying fullpath to logfile
 ```
-./Get-IntuneManagementExtensionDiagnostics.ps1 -LOGFile -LOGFile "C:\temp\MDMDiagReport\IntuneManagementExtension.log"
+./Get-IntuneManagementExtensionDiagnostics.ps1 -LOGFile "C:\temp\MDMDiagReport\IntuneManagementExtension.log"
 ```
 **-LogFilesFolder**  
 Open log files folder and show UI where you can select what Intune log files to open.
@@ -77,6 +77,18 @@ Or you can download Intune logs from remote computer with Intune action **Collec
 ```
 ./Get-IntuneManagementExtensionDiagnostics.ps1 -LogFilesFolder "C:\temp\MDMDiagReport"
 ```
+**-ZipFile**  
+Extract the zip file and open the log file inside
+```
+./Get-IntuneManagementExtensionDiagnostics.ps1 -ZipFile "C:\temp\MDMDiagReport\D-00000.zip"
+```
+
+**-CabFile**  
+Extract the CAB file and open the log file inside
+```
+./Get-IntuneManagementExtensionDiagnostics.ps1 -CabFile "C:\temp\MDMDiagReport\mdmlogs-00000.cab"
+```
+
 **-ShowAllTimelineEntries**  
 Shows start events on Timeline.
 ```
