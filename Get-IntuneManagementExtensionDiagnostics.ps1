@@ -780,52 +780,87 @@ $Script:observedTimeLineIndexToHTMLTable=0
 
 	function Expand-DiagFile {
 		Param(
-			$CabPath,
-			$ZipPath
+			$Filepath
 		)
-
-		if (-not (Test-Path "$($env:TEMP)\ESPStatus.tmp")) {
-			New-Item -Path "$($env:TEMP)\ESPStatus.tmp" -ItemType "directory" | Out-Null
-		}
-		Remove-Item -Path "$($env:TEMP)\ESPStatus.tmp\*" -Force -Recurse 
-
-		if($ZipPath) {
-			if (-not (Test-Path "$($env:TEMP)\ESPzip.tmp")) {
-				New-Item -Path "$($env:TEMP)\ESPzip.tmp" -ItemType "directory" | Out-Null
-			}
-			Remove-Item -Path "$($env:TEMP)\ESPzip.tmp\*" -Force -Recurse
-			Expand-Archive -Path $ZipPath -DestinationPath "$($env:TEMP)\ESPzip.tmp"
+		begin {
+			#Create and clean temp folders
+			$tempDir = Join-Path -Path $env:TEMP -ChildPath "ESPStatus.tmp"
+			New-Item -Path $env:TEMP -ItemType "directory" -Name "ESPStatus.tmp" -ErrorAction SilentlyContinue -Force -Confirm:$false > $null
+			Get-ChildItem -path $tempDir | Remove-Item -Force -Confirm:$false -Recurse
 			
-			Get-ChildItem -Path "$($env:TEMP)\ESPzip.tmp\" -Filter mdmlogs*.cab -Recurse | ForEach-Object {
-				$null = & expand.exe "$($_.FullName)" -F:* "$($env:TEMP)\ESPStatus.tmp\"
-			}
+			$tempZip = Join-Path -Path $env:TEMP -ChildPath "ESPZip.tmp"
+			New-Item -Path $env:TEMP -ItemType "directory" -Name "ESPZip.tmp" -ErrorAction SilentlyContinue -Force -Confirm:$false > $null
+			Get-ChildItem -path $tempZip | Remove-Item -Force -Confirm:$false -Recurse
 		}
-		if($CabPath) {
-			$null = & expand.exe "$CabPath" -F:* "$($env:TEMP)\ESPStatus.tmp\"
+
+		process {
+			#Extract files if zip
+			if($Filepath -match '\.zip$') {			
+				Expand-Archive -Path $Filepath -DestinationPath $tempZip -Force 
+				$CabPath = (Get-ChildItem -Path $tempZip -Filter mdmlogs*.cab -Recurse | Move-Item -Destination $tempDir -PassThru).FullName
+				switch ($CabPath.count) {
+					{$_ -gt 1} {Invoke-Goodbye "More than one cab file found."}
+					{$_ -eq 0} {Invoke-Goodbye "No cab file found."} 
+				}
+			}
+			else{
+				$CabPath = (Copy-Item -Path $Filepath -Destination $tempDir -PassThru).FullName
+			}
+						
+			#Extract CAB file
+			try{
+				Start-Process -FilePath "expand.exe" -ArgumentList "$CabPath -F:* $tempDir" -Wait -WindowStyle Hidden
+			}
+			catch {
+				Invoke-Goodbye "Error extracting $Filepath"
+			}
 		}
 		
-		if (-not (Test-Path "$($env:TEMP)\ESPStatus.tmp")) {
-			Write-Error "Unable to extract file"
-			exit(0)
+		end {
+			#Check if files were extracted
+			if((Get-ChildItem -Path $tempDir).count -eq 0) {
+				Write-Host "No files extracted from $Filepath" -ForegroundColor Yellow
+				return $null
+			} 
+			#Return extracted files
+			else {
+				$LogFiles = Get-ChildItem -Path $tempDir -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+				return $LogFiles
+			}
 		}
-		else {
-			$LogFiles = Get-ChildItem -Path "$($env:TEMP)\ESPStatus.tmp" -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-			return $LogFiles
-		}
+	}
+
+	function Invoke-Goodbye {
+		param (
+			$Message
+		)
+		Write-Host $Message -ForegroundColor Yellow
+		Write-Host "Script will exit" -ForegroundColor Yellow
+		Write-Host ""
+		exit(1)
 	}
 
 # endregion Functions
 
 ################ Functions ################
-$Check = Get-Item $LogFile -ErrorAction SilentlyContinue 2> $null
-switch ($Check) {
-	{$_.Attributes -eq "Directory"} {$LogFiles = Get-ChildItem -Path $LogFile -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending}
-	{$_.Extension -eq ".cab"}{$LogFiles = Expand-DiagFile -CabPath $LogFile}
-	{$_.Extension -eq ".zip"}{$LogFiles = Expand-DiagFile -ZipPath $LogFile}
-	{$_.Extension -eq ".log"}{$SelectedLogFiles = Get-ChildItem -Path $LOGFile}
-}
+#If input was provided for logfile, check if it exists and pull the required files for processing
+if($LogFile){
+	try{
+		$Check = Get-Item -Path $LogFile 
+	}
+	catch{
+		Invoke-Goodbye "Object does not exist: $LogFile"
+	}
 
-if([string]::IsNullOrEmpty($LogFile)){
+	switch ($Check) {
+		{$_.Attributes -eq "Directory"} {$LogFiles = Get-ChildItem -Path $LogFile -Filter *.log -Recurse | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending}
+		{$_.Extension -eq ".cab"}{$LogFiles = Expand-DiagFile -Filepath $LogFile}
+		{$_.Extension -eq ".zip"}{$LogFiles = Expand-DiagFile -Filepath $LogFile}
+		{$_.Extension -eq ".log"}{$SelectedLogFiles = Get-ChildItem $LogFile -Filter *.log -Recurse}
+		default {Invoke-Goodbye "Invalid input provided: $LogFile"}
+	}
+}
+else{
 	# Running report using local computer's Intune log files
 	# Save Computer Name
 	$ComputerNameForReport = $env:ComputerName
@@ -845,8 +880,7 @@ if(-not $SelectedLogFiles) {
 }
 
 if(-not $SelectedLogFiles) {
-	Write-Host "No log file(s) selected. Script will exit!`n" -ForegroundColor Yellow
-	Exit 0
+	Invoke-Goodbye "No log file(s) selected. Script will exit!`n"
 }
 
 # Check whether we show time selection on Out-GridView or not
@@ -1025,9 +1059,8 @@ if ($Online) {
 
 			Write-Host "Installing module Microsoft.Graph.Authentication"
 			Install-Module Microsoft.Graph.Authentication -Force
-			$Success = $?
 			
-			if($Success) {
+			if($?) {
 				Write-Host "Success`n" -ForegroundColor Green
 
 				Write-Host "Import module Microsoft.Graph.Authentication"
