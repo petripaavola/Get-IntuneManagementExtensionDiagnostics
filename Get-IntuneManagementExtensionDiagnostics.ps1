@@ -1,8 +1,8 @@
 ﻿<#PSScriptInfo
 
-.VERSION 2.3
+.VERSION 2.4
 
-.GUID f321e845-7139-41d7-b0dd-356ea87931e3
+.GUID e0307766-d5a7-4704-a578-5ff1fb315a26
 
 .AUTHOR Petri.Paavola@yodamiitti.fi
 
@@ -38,6 +38,7 @@ Version 2.0:  Huge new feature is to create html report
 			  Added App detection events to timeline
 			  Html report entries support HoverOn ToolTips which include more information
 Version 2.3:  Updated script to use Microsoft.Graph.Authentication module to download data from Graph API
+Version 2.4:  Fix to process new log files AppWorkload.log
 #>
 
 <#
@@ -74,9 +75,9 @@ Version 2.3:  Updated script to use Microsoft.Graph.Authentication module to dow
    Author:
    Petri.Paavola@yodamiitti.fi
    Senior Modern Management Principal
-   Microsoft MVP - Windows and Devices
+   Microsoft MVP - Windows and Intune
    
-   2024-05-09
+   2024-08-29
 
    https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics
 
@@ -113,7 +114,7 @@ This is default option (aka silent and no selection UI shown)
 Selecting this parameter will enable UI which asks date/time/hour selection for logs
 
 .PARAMETER AllLogFiles
-Process all found supported log file(s) automatically. This includes *AgentExecutor*.log and *IntuneManagementExtension*.log
+Process all found supported log file(s) automatically. This includes *AgentExecutor*.log, *IntuneManagementExtension*.log and *AppWorkload*.log
 Selecting this parameter will disable UI which asks which log files to process (use for silent commands or scripts)
 This is default option (aka silent and no selection UI shown)
 
@@ -271,12 +272,12 @@ Param(
 )
 
 
-$ScriptVersion = "2.3"
+$ScriptVersion = "2.4"
 $TimeOutBetweenGraphAPIRequests = 300
 
 
 Write-Host "Get-IntuneManagementExtensionDiagnostics.ps1 $ScriptVersion" -ForegroundColor Cyan
-Write-Host "Author: Petri.Paavola@yodamiitti.fi / Microsoft MVP - Windows and Devices"
+Write-Host "Author: Petri.Paavola@yodamiitti.fi / Microsoft MVP - Windows and Intune"
 Write-Host ""
 
 
@@ -812,7 +813,7 @@ if($LOGFile) {
 		}
 
 		# Sort files: new files first and IntuneManagementExtension before AgentExecutor
-		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') -or ($_.Name -like '*AppWorkload*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
 
 	} else {
 		# Running report using local computer's Intune log files
@@ -821,7 +822,7 @@ if($LOGFile) {
 		$ComputerNameForReport = $env:ComputerName
 		
 		# Sort files: new files first and IntuneManagementExtension before AgentExecutor
-		$LogFiles = Get-ChildItem -Path 'C:\ProgramData\Microsoft\intunemanagementextension\Logs' -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
+		$LogFiles = Get-ChildItem -Path 'C:\ProgramData\Microsoft\intunemanagementextension\Logs' -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') -or ($_.Name -like '*AppWorkload*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
 
 	}
 	
@@ -3435,6 +3436,7 @@ do {
 		# Win32App
 		# WinGetApp
 
+		# Note! Application log entries have moved to file AppWorkload.log (2024-08-29)
 
 		# Check for application policies
 		if($LogEntryList[$i].Message -like 'Get policies = *') {
