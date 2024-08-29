@@ -1,5 +1,7 @@
-# Get-IntuneManagementExtensionDiagnostics v2.3 (2024-05-10) #
-**2024-05-10 update**  
+# Get-IntuneManagementExtensionDiagnostics v2.4 (2024-08-29) #
+**2024-08-29 update**  
+New version 2.4 Fix **AppWorkload.log** file change.
+
 New version 2.3 uses **Microsoft.Graph.Authentication** module.
 
 New version 2.0 creates HTML report which has more information and for example has additional info in HoverOn ToolTips.**
