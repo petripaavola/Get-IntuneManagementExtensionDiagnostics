@@ -1,5 +1,7 @@
-# Get-IntuneManagementExtensionDiagnostics v2.4 (2024-08-29) #
-**2024-08-29 update**  
+# Get-IntuneManagementExtensionDiagnostics v3.0 (2024-09-17) #
+**2024-09-17 update**  
+New version 3.0 **shows clear text PowerShell and Remediation scripts** in hover on ToolTip when using -Online option and you can copy scripts and other ToolTip text to clipboard. Also detects Autopilot Device Registration enrollment.
+
 New version 2.4 Fix **AppWorkload.log** file change.
 
 New version 2.3 uses **Microsoft.Graph.Authentication** module.
