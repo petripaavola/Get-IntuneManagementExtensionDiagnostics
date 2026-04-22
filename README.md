@@ -1,8 +1,8 @@
 > [!IMPORTANT]
-> 🚀 **You want the latest and greatest! Use the Dev version (v3.3)**  
-> The Development version includes newest features, improvements and fixes before official releases.  
-> 👉 Download this:  
-> https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/blob/main/DeveloperVersion/README.md
+> 🚀 **You will want the latest and greatest – use the Dev version (v3.3)!**  
+> The Development version includes newest features, improvements, and fixes before official releases.  
+> 👉 Get it here:  
+> https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics/tree/main/DeveloperVersion
 
 # Get-IntuneManagementExtensionDiagnostics v3.0 (2024-09-17) #
 **2024-09-17 update**  
