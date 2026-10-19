@@ -212,6 +212,9 @@ Note that PowerShell script is always shown in report ToolTip in clear text beca
    You can download current version of this script from PowershellGallery with command
 
    Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
+
+   HTML report refinements: associated control labels, title/viewport metadata,
+   wrapping filters and dark grouped rows with readable status colors.
 .LINK
    https://github.com/petripaavola/Get-IntuneManagementExtensionDiagnostics
 #>
@@ -4599,6 +4602,8 @@ do {
 		# Create HTML report
 
 	$head = @'
+	<title>Get-IntuneManagementExtensionDiagnostics Observed Timeline Report</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<style>
 		body {
 			background-color: #FFFFFF;
@@ -4688,7 +4693,7 @@ do {
 		}
 
 		table tr:hover {
-			background-color: #1C6EA4;
+			background-color: #0c3565;
             cursor: pointer;
 		}
 
@@ -4847,6 +4852,8 @@ do {
 	  
 		.filter-row {
 		  display: flex;
+		  flex-wrap: wrap;
+		  row-gap: 12px;
 		  align-items: center;
 		}
 
@@ -4961,21 +4968,21 @@ do {
 					</div>
 					<!-- Dropdown 1 -->
 					<div class="control-group">
-						<label for="dropdown1">Status</label>
+						<label for="filterDropdown1">Status</label>
 						<select id="filterDropdown1" multiple>
 						  <option value="all" selected>All</option>
 						</select>
 					</div>
 					<!-- Dropdown 2 -->
 					<div class="control-group">
-						<label for="dropdown1">Type</label>
+						<label for="filterDropdown2">Type</label>
 						<select id="filterDropdown2">
 						  <option value="all">All</option>
 						</select>
 					</div>
 					<!-- Dropdown 3 -->
 					<div class="control-group">
-					<label for="dropdown1">Intent</label>
+					<label for="filterDropdown3">Intent</label>
 					<select id="filterDropdown3">
 						  <option value="all">All</option>
 						</select>
@@ -4983,9 +4990,9 @@ do {
 				</div>
 				<br>
 				<div>
-					<input type="text" id="searchInput" placeholder="Search...">
-					<button id="clearSearch" onclick="clearSearch()">X</button>
-					<button id="resetFilter" onclick="resetFilters()">Reset filters</button>
+					<input type="text" id="searchInput" aria-label="Search timeline" placeholder="Search...">
+					<button type="button" id="clearSearch" aria-label="Clear search" title="Clear search" onclick="clearSearch()">X</button>
+					<button type="button" id="resetFilter" onclick="resetFilters()">Reset filters</button>
 				</div>
 "@
 			
@@ -5116,7 +5123,7 @@ do {
 			
 			const FONT_COLOR_CONSTANTS = {
 				'Green': '#00ff00',
-				'Red': '#ff0000',
+				'Red': '#ff9e9e',
 				'Yellow': '#ffffcc'
 				// Add other colors as needed
 			};
@@ -5136,7 +5143,7 @@ do {
 			  let table = document.getElementById(tableId);
 			  let rows = table.getElementsByTagName("tr");
 			  let previousValue = null;
-			  let currentColor = "rgba(208, 228, 245, 1)";
+			  let currentColor = "rgba(1, 36, 86, 1)";
 
 			  table.setAttribute("data-last-color", currentColor);
 
@@ -5151,7 +5158,7 @@ do {
 				let currentValue = row.getElementsByTagName("td")[columnIndex].textContent;
 
 				if (previousValue !== null && currentValue !== previousValue) {
-				  currentColor = table.getAttribute("data-last-color") === "rgba(242, 242, 242, 1)" ? "rgba(208, 228, 245, 1)" : "rgba(242, 242, 242, 1)";
+				  currentColor = table.getAttribute("data-last-color") === "rgba(12, 53, 101, 1)" ? "rgba(1, 36, 86, 1)" : "rgba(12, 53, 101, 1)";
 				  table.setAttribute("data-last-color", currentColor);
 				}
 
