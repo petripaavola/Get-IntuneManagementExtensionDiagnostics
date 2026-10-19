@@ -1,6 +1,6 @@
 <#PSScriptInfo
 
-.VERSION 3.3
+.VERSION 3.4
 
 .GUID e0307766-d5a7-4704-a578-5ff1fb315a26
 
@@ -46,6 +46,15 @@ Version 3.0:  Support for Intune Device Preparation.
 Version 3.1:  Fixed Remediation script output printing which broke when log line changed at some time
 Version 3.2:  Fixed partial PowerShell script content showing in ToolTips. Now full script is shown in ToolTips.  
 Version 3.3:  Added Application table to HTML report which shows all applications which were in logs with their detection results and intents. This should help to quickly find application related issues. Also added filtering for this table so you can easily find for example all not detected applications or all required install applications.
+Version 3.4:  Offline folder, ZIP and individual log input, preserving local and Autopilot/ESP usage.
+              InputPath is an optional addition; original parameters and local startup remain available.
+              Streamed CMTrace parsing, including AppActionProcessor and HealthScripts.
+              File coverage and rejected-line reasons in HTML and a diagnostics JSON sidecar.
+              Local fixes for GitHub #13 and #14: valid verbose parameters and remediation end timestamps.
+              Merge mirrored remediation starts only across IME/HealthScripts log families,
+              with identical command and thread within one second; retain genuine restarts and missing-end warnings.
+              Read AgentExecutor output with a separate lookahead cursor, consuming only its output record.
+              Missing or single-line output cannot skip a restart or reuse another execution's completion.
 #>
 
 <#
@@ -54,7 +63,30 @@ Version 3.3:  Added Application table to HTML report which shows all application
 
 .DESCRIPTION
    This script analyzes Microsoft Intune Management Extension (IME) log(s) and creates timeline report from found log events.
-   
+
+   INPUT MODES
+   Without a source parameter, use the original local IME logs folder:
+   C:\ProgramData\Microsoft\IntuneManagementExtension\Logs
+   The existing LogFile parameter (including its FullName pipeline alias) and LogFilesFolder remain available.
+   InputPath is a separate, optional source parameter for an explicitly supplied folder, ZIP, or .log/.lo_ file.
+   No external source is inferred from nearby files, the working directory, or the execution context.
+   InputPath cannot be combined with LogFile or LogFilesFolder. An invalid explicit source never falls back to local logs.
+
+   AUTOPILOT / ESP
+   With no source parameter and the local defaultUser0 account, retain automatic ESP startup:
+   read all log files and entries, show extended timeline events, do not open a browser,
+   and do not download cleartext remediation scripts. If the local folder or main IME log is not present yet,
+   show the existing "Try again in a moment" message and exit. An explicit source is never replaced by this mode.
+   ESP and Autopilot Device Preparation (APv2) event analysis also applies to supplied logs.
+
+   REPORTS AND COVERAGE
+   Save an HTML report and a matching .diagnostics.json file beside the script, or in ExportHTMLReportPath.
+   The output directory must already exist. Use ExportTextFileName for an optional additional text export.
+   The HTML opens automatically unless DoNotOpenReportAutomatically or automatic local ESP startup disables it.
+   File inventory, analysis coverage and rejected-line reasons appear in both HTML and JSON.
+   A complete CMTrace record may span several physical lines; both counts are reported.
+   Parsing a record does not guarantee a timeline event. Lines outside the selected time range are not parse rejections.
+
    Report is saved to HTML file. Events are also shown in Powershell console window.
    
    Timeline report includes information about Intune Win32App, WinGetApp, Powershell scripts, Remedation scripts and custom Compliance Policy scripts events. Windows Autopilot ESP phases are also shown on timeline.
@@ -92,36 +124,47 @@ Version 3.3:  Added Application table to HTML report which shows all application
 Download Powershell, Remediation and custom Compliance policy scripts to get displayName to Timeline report
 Install Microsoft Graph module with command: Install-Module -Name Microsoft.Graph.Authentication -Scope CurrentUser
 
+.PARAMETER InputPath
+Optional, explicitly supplied source: an existing folder, ZIP archive, or individual .log/.lo_ file.
+Folders are searched recursively. ZIP entries are read directly without extraction.
+No external source is inferred from nearby files, the working directory, or the execution context.
+Cannot be combined with LogFile or LogFilesFolder. Invalid input never falls back to local logs.
+Omitting this option preserves the existing LogFile, LogFilesFolder and local-log usages,
+including automatic settings during Windows Autopilot ESP.
+
 .PARAMETER LogFile
-Specify log file fullpath
+Original log-file path parameter, including pipeline input and the FullName alias.
 
 .PARAMETER LogFilesFolder
-Specify folder where to check log files. Will show UI where you can select what logs to process
+Compatibility parameter for an existing folder. Cannot be combined with InputPath.
+Use LogFilesSelectionUI to select files interactively.
 
 .PARAMETER LogStartDateTime
-Specify date and time to start log entries. For example -
+Inclusive start time. Accepts a DateTime value or a date/time string, for example "2026-10-12 05:00:00".
 
 .PARAMETER LogEndDateTime
-Specify date and time to stop log entries
+Exclusive end time, for example "2026-10-13 00:00:00". Must be later than LogStartDateTime.
 
 .PARAMETER ShowLogViewerUI
 Shows graphical LogViewerUI where all log events are easily browsed, searched and filtered in graphical UI
-This parameter will always show file selection UI and event selection UI.
+Enables file and time selection UIs. An explicit date range or Today bypasses time selection.
+Automatic local ESP startup retains its original all-files/all-entries defaults.
 
 .PARAMETER LogViewerUI
-Shows graphical LogViewerUI where all log events are easily browsed, searched and filtered in graphical UI
-This parameter will always show file selection UI and event selection UI.
+Same log-viewer behavior and selection rules as ShowLogViewerUI.
 
-.PARAMETER AllLogEvents
+.PARAMETER AllLogEntries
 Process all found log events.
 Selecting this parameter will disable UI which asks date/time/hour selection for logs (use for silent commands or scripts)
 This is default option (aka silent and no selection UI shown)
 
-.PARAMETER LogEventsSelectionUI
+.PARAMETER LogEntriesSelectionUI
 Selecting this parameter will enable UI which asks date/time/hour selection for logs
 
 .PARAMETER AllLogFiles
-Process all found supported log file(s) automatically. This includes *AgentExecutor*.log, *IntuneManagementExtension*.log and *AppWorkload*.log
+Read all .log and .lo_ files, including rotated logs, automatically.
+Timeline rules cover selected IME messages, not every parsed record.
+Other log families remain available in the log viewer; coverage is shown in the report.
 Selecting this parameter will disable UI which asks which log files to process (use for silent commands or scripts)
 This is default option (aka silent and no selection UI shown)
 
@@ -154,6 +197,7 @@ Threshold (seconds) after Timeline report will show warning message for long run
 .PARAMETER ExportTextFileName
 Export Timeline information and possible Powershell script error to text file.
 This expects either text filename or fullpath to textfile.
+An existing text file is not overwritten.
 
 .PARAMETER FindAllLongRunningPowershellScripts
 Poweruser option to try to find all long running Powershell scripts over threshold which default is 180 seconds
@@ -161,6 +205,11 @@ This option could find long running scripts which we don't even have event in ou
 
 .PARAMETER DoNotOpenReportAutomatically
 Do not open html report file automatically in browser
+
+.PARAMETER ExportHTMLReportPath
+Existing output directory. Defaults to the script directory.
+The HTML report and a matching .diagnostics.json file are saved here.
+Diagnostics contain file paths, counts and rejection reasons, but not raw log messages.
 
 .PARAMETER DoNotDownloadClearTextRemediationScriptsToReport
 Do not download Remediation scripts in clear text to the report
@@ -170,12 +219,21 @@ Note that PowerShell script is always shown in report ToolTip in clear text beca
 
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1
+   Original local-log usage, including automatic ESP startup when running as defaultUser0.
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -InputPath "C:\Support\IME Logs"
+   Optional explicit folder input, searched recursively.
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -InputPath "C:\Support\IME Logs.zip" -DoNotOpenReportAutomatically
+   Optional explicit ZIP input, read directly without extraction or local-log fallback.
+.EXAMPLE
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -InputPath "C:\Support\IME Logs.zip" -ExportHTMLReportPath "C:\Support\Reports"
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online
 .EXAMPLE
-   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEvents -AllLogFiles
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEntries -AllLogFiles
 .EXAMPLE
-   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEvents -ShowAllTimelineEvents
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -AllLogEntries -ShowAllTimelineEvents
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowLogViewerUI
 .EXAMPLE
@@ -183,7 +241,7 @@ Note that PowerShell script is always shown in report ToolTip in clear text beca
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -Today
 .EXAMPLE
-   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -LogStartDateTime "10.3.2023 5.00:00" -LogEndDateTime "11.3.2023 23.00:00"
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -InputPath "C:\Support\IME Logs.zip" -LogStartDateTime "2026-10-12 05:00:00" -LogEndDateTime "2026-10-13 00:00:00"
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 "C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"
 .EXAMPLE
@@ -197,9 +255,9 @@ Note that PowerShell script is always shown in report ToolTip in clear text beca
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ShowErrorsSummary
 .EXAMPLE
-   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ExportTextFileName ExportTextFile.txt
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -ExportTextFileName ExportTextFile.txt
 .EXAMPLE
-   .\Get-IntuneManagementExtensionDiagnostics.ps1 -Online -ExportTextFileName C:\temp\ExportTextFile.txt
+   .\Get-IntuneManagementExtensionDiagnostics.ps1 -ExportTextFileName C:\temp\ExportTextFile.txt
 .EXAMPLE
    .\Get-IntuneManagementExtensionDiagnostics.ps1 -AllLogEntries -AllLogFiles -ExportTextFileName C:\temp\ExportTextFile.txt
 .EXAMPLE
@@ -207,9 +265,25 @@ Note that PowerShell script is always shown in report ToolTip in clear text beca
 .INPUTS
    Script accepts File object as input. This would be same than specifying Parameter -LogFile
 .OUTPUTS
-   None
+   None on the success pipeline. Creates an HTML report and a matching .diagnostics.json file.
+   ExportTextFileName additionally writes a text report.
 .NOTES
-   You can download current version of this script from PowershellGallery with command
+   Version 3.4 in this folder includes local extensions; the original author and project attribution are retained.
+   ZIP entries are read without extraction. Nested archives are not expanded.
+   Non-log files are inventoried as ignored. Empty, unreadable or partially parsed logs retain an explicit status/reason.
+   Rejected records include their source file and starting line number; valid records from a partial file are still used.
+
+   Log coverage reviewed against Microsoft Learn on 2026-10-19:
+   https://learn.microsoft.com/en-us/intune/device-management/tools/management-extension-windows#ime-log-files
+   https://learn.microsoft.com/en-us/intune/app-management/deployment/troubleshoot-win32#logs-displayed-through-cmtrace
+   These pages document log roles, not a complete, stable schema of event messages.
+   Parsing a record does not mean its event has a dedicated timeline rule.
+   Timestamps are kept in the source's local wall-clock time; no timezone is inferred.
+   Reports can contain usernames, device identifiers, script contents and script output.
+   Keep both reports and source logs in an appropriately protected location.
+
+   The following command downloads the PowerShell Gallery-published edition.
+   It is not a backup of this locally modified copy:
 
    Save-Script Get-IntuneManagementExtensionDiagnostics -Path ./
 .LINK
@@ -282,11 +356,15 @@ Param(
 	[Parameter(Mandatory=$false)]
 	[Switch]$DoNotOpenReportAutomatically,
 	[Parameter(Mandatory=$false)]
-	[Switch]$DoNotDownloadClearTextRemediationScriptsToReport
+	[Switch]$DoNotDownloadClearTextRemediationScriptsToReport,
+	[Parameter(Mandatory=$false,
+				HelpMessage = 'Optional explicit folder, ZIP archive, or individual IME log source')]
+	[ValidateNotNullOrEmpty()]
+	[String]$InputPath = $null
 )
 
 
-$ScriptVersion = "3.3"
+$ScriptVersion = "3.4"
 $TimeOutBetweenGraphAPIRequests = 300
 
 
@@ -329,61 +407,52 @@ if($ShowLogViewerUI -or $LogViewerUI) {
 
 
 
-# Set variables automatically if we are in Windows Autopilot ESP (Enrollment Status Page)
-# Idea is that user can just run the script without checking Parameters first
-if($env:UserName -eq 'defaultUser0') {
+if($PSBoundParameters.ContainsKey('InputPath') -and
+	($PSBoundParameters.ContainsKey('LogFile') -or $PSBoundParameters.ContainsKey('LogFilesFolder'))) {
+	throw 'Specify either InputPath or the existing LogFile/LogFilesFolder parameters, not both.'
+}
+if($LogFile) {
+	$InputPath = $LogFile
+	$LogFilesFolder = $null
+}
 
-	Write-Host "Detected running in Windows Autopilot Enrollment Status Page (ESP)" -ForegroundColor Yellow
-
-	#$LOGFile='C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log'
-
-	# Do not open HTML report to browser
-	$DoNotOpenReportAutomatically = $true
-
-	if((-not $LogFilesFolder) -or (-not $LOGFile)) {
-		Write-Host "Configuring parameters automatically"
-		Write-Host "Selected: All log files from default Intune IME logs folder"
-		Write-Host "Selected: Do not open HTML report automatically"
-		Write-Host
-
-		$LogFilesFolder = 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs'
-
-		if(-not (Test-Path $LogFilesFolder)) {
-			Write-Host "Log folder does not exist yet: $LogFilesFolder"
-			Write-Host "Try again in a moment..."  -ForegroundColor Yellow
-			Write-Host ""
-			Exit 0
-		}
-	}
-
-	# Save Computer Name
+$ComputerNameForReport = 'N/A'
+$UsingLocalLogs = -not ($InputPath -or $LogFilesFolder)
+if($UsingLocalLogs) {
+	$LogFilesFolder = 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs'
 	$ComputerNameForReport = $env:ComputerName
+}
 
-	# Process all found supported log files
-	# This will not show file selection UI
-	$AllLogFiles=$True
+# Keep the original OOBE startup settings, but never replace an explicit external source.
+if($env:UserName -eq 'defaultUser0' -and $UsingLocalLogs) {
+	Write-Host "Detected running in Windows Autopilot Enrollment Status Page (ESP)" -ForegroundColor Yellow
+	Write-Host "Configuring parameters automatically"
+	Write-Host "Selected: All log files from default Intune IME logs folder"
+	Write-Host "Selected: Do not open HTML report automatically"
+	Write-Host ""
 
-	# Process all log entries
-	# This will not show time selection UI
-	$AllLogEntries=$True
+	$DoNotOpenReportAutomatically = $true
+	$AllLogFiles = $true
+	$AllLogEntries = $true
+	$ShowAllTimelineEvents = $true
+	$DoNotDownloadClearTextRemediationScriptsToReport = $true
 
-	# Show all entries in Timeline
-	# This especially useful if some script or application hangs for a long time
-	# so then you can see start entry for that script or application and you know what is current running Intune deployment
-	$ShowAllTimelineEvents=$True
-	
-	# Do not download Remediation scripts in clear text to Report
-	# Reason is that many may not event know that script did also html report
-	# In OOBE usually the console view is enough and html file may be left to the device disk
-	$DoNotDownloadClearTextRemediationScriptsToReport=$True
-	
-	if(-not (Test-Path 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log')) {
-		Write-Host "Log file does not exist yet: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log"  -ForegroundColor Yellow
-		Write-Host "Try again in a moment..."  -ForegroundColor Yellow
+	if(-not (Test-Path -LiteralPath $LogFilesFolder -PathType Container)) {
+		Write-Host "Log folder does not exist yet: $LogFilesFolder" -ForegroundColor Yellow
+		Write-Host "Try again in a moment..." -ForegroundColor Yellow
+		Write-Host ""
+		Exit 0
+	}
+	if(-not (Test-Path -LiteralPath 'C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log' -PathType Leaf)) {
+		Write-Host "Log file does not exist yet: C:\ProgramData\Microsoft\IntuneManagementExtension\Logs\IntuneManagementExtension.log" -ForegroundColor Yellow
+		Write-Host "Try again in a moment..." -ForegroundColor Yellow
 		Write-Host ""
 		Exit 0
 	}
 }
+
+$InputFileDiagnostics = [System.Collections.Generic.List[PSObject]]::new()
+$LogParseIssues = [System.Collections.Generic.List[PSObject]]::new()
 
 
 # Hashtable with ids and names
@@ -806,7 +875,7 @@ $Script:observedTimeLineIndexToHTMLTable=0
 					} else {
 						# Did not get scriptContent information
 						# We should never get here if we got anything successfully from Graph API
-						Write-Verbose "Failed to download Powershell scriptContent property" -ForegroundColor Yellow
+						Write-Verbose "Failed to download Powershell scriptContent property"
 						return 'N/A'
 					}
 				} else {
@@ -879,7 +948,7 @@ $Script:observedTimeLineIndexToHTMLTable=0
 					} else {
 						# Did not get detectionScriptContent information
 						# We should never get here if we got anything successfully from Graph API
-						Write-Verbose "Failed to download Remediation Detect detectionScriptContent property" -ForegroundColor Yellow
+						Write-Verbose "Failed to download Remediation Detect detectionScriptContent property"
 						return 'N/A'
 					}
 				} else {
@@ -951,7 +1020,7 @@ $Script:observedTimeLineIndexToHTMLTable=0
 					} else {
 						# Did not get remediationScriptContent information
 						# We should never get here if we got anything successfully from Graph API
-						Write-Verbose "Failed to download Powershell remediationScriptContent property" -ForegroundColor Yellow
+						Write-Verbose "Failed to download Powershell remediationScriptContent property"
 						return 'N/A'
 					}
 				} else {
@@ -1023,7 +1092,7 @@ $Script:observedTimeLineIndexToHTMLTable=0
 					} else {
 						# Did not get detectionScriptContent information
 						# We should never get here if we got anything successfully from Graph API
-						Write-Verbose "Failed to download Custom Compliance detectionScriptContent property" -ForegroundColor Yellow
+						Write-Verbose "Failed to download Custom Compliance detectionScriptContent property"
 						return 'N/A'
 					}
 				} else {
@@ -1096,69 +1165,243 @@ $Script:observedTimeLineIndexToHTMLTable=0
 		return $output
 	}
 
+	function Get-IMERemediationLogFamily {
+		param($Entry)
+
+		if($Entry.FileName -match '(?:^|[\\/])_?(IntuneManagementExtension|HealthScripts)(?:[-_.].*)?\.(?:log|lo_)$') {
+			return $Matches[1]
+		}
+		return $Entry.FileName
+	}
+
+	function New-IMELogSource {
+		param($Name, $FullName, $RelativePath, $Length, $LastWriteTime, $ArchiveEntry)
+
+		$coverage = 'Generic CMTrace; no dedicated timeline rules'
+		if($Name -match '^_?(IntuneManagementExtension|AgentExecutor|AppWorkload|AppActionProcessor|HealthScripts)(?:[-_.].*)?\.(?:log|lo_)$') {
+			$coverage = 'IME timeline rules (partial) and log viewer'
+		}
+		$isLog = [System.IO.Path]::GetExtension($Name) -in @('.log', '.lo_')
+		$diagnostic = [PSCustomObject]@{
+			File = $RelativePath
+			Status = if($isLog) { 'Pending' } else { 'Ignored' }
+			Coverage = if($isLog) { $coverage } else { 'Not a log file' }
+			Bytes = $Length
+			Lines = 0
+			Records = 0
+			ParsedLines = 0
+			RejectedLines = 0
+			BlankLines = 0
+			FirstTimestamp = $null
+			LastTimestamp = $null
+			Reason = if($isLog) { '' } else { 'Only .log and .lo_ files are read; no content was inspected.' }
+		}
+		$InputFileDiagnostics.Add($diagnostic)
+		if($isLog) {
+			[PSCustomObject]@{
+				Name = $Name
+				FullName = $FullName
+				RelativePath = $RelativePath
+				LastWriteTime = $LastWriteTime
+				ArchiveEntry = $ArchiveEntry
+				Diagnostics = $diagnostic
+			}
+		}
+	}
+
+	function Add-IMEParseIssue {
+		param($Diagnostic, $PendingLines, [string]$Reason)
+
+		if($PendingLines.Count -eq 0) { return }
+		$Diagnostic.RejectedLines += $PendingLines.Count
+		$LogParseIssues.Add([PSCustomObject]@{
+			File = $Diagnostic.File
+			Line = $PendingLines[0].Line
+			Lines = $PendingLines.Count
+			Reason = $Reason
+		})
+	}
+
+	function Read-IMELogFile {
+		param($Source, [System.Collections.Generic.List[PSObject]]$Entries)
+
+		$diagnostic = $Source.Diagnostics
+		$pending = [System.Collections.Generic.List[PSObject]]::new()
+		$reader = $null
+		$stream = $null
+		try {
+			if($Source.ArchiveEntry) {
+				$stream = $Source.ArchiveEntry.Open()
+			} else {
+				$stream = [System.IO.File]::OpenRead($Source.FullName)
+			}
+			$reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::UTF8, $true)
+			while($null -ne ($line = $reader.ReadLine())) {
+				$diagnostic.Lines++
+				if($line.StartsWith('<![LOG[')) {
+					if($pending.Count -gt 0) {
+						Add-IMEParseIssue $diagnostic $pending 'Unterminated CMTrace record before the next record.'
+						$pending.Clear()
+					}
+					$line = $line.Substring(7)
+				} elseif($pending.Count -eq 0) {
+					if([string]::IsNullOrWhiteSpace($line)) {
+						$diagnostic.BlankLines++
+					} else {
+						$reason = if($line.Contains(']LOG]!>')) {
+							'CMTrace closing marker without a matching record start; possible truncated or duplicated source record.'
+						} else {
+							'Text outside a CMTrace record; no timestamp can be assigned safely.'
+						}
+						Add-IMEParseIssue $diagnostic @([PSCustomObject]@{ Line = $diagnostic.Lines }) $reason
+					}
+					continue
+				}
+
+				$part = [PSCustomObject]@{ Line = $diagnostic.Lines; Text = $line }
+				$pending.Add($part)
+				if($line -notmatch '^(?<Message>.*)\]LOG\]!>\s*<(?<Metadata>.*)>\s*$') {
+					continue
+				}
+				$part.Text = $Matches.Message
+				$metadata = $Matches.Metadata
+				$attributes = @{}
+				foreach($attribute in [regex]::Matches($metadata, '(?<Name>\w+)="(?<Value>[^"]*)"')) {
+					$attributes[$attribute.Groups['Name'].Value] = $attribute.Groups['Value'].Value
+				}
+				# CMTrace's numeric UTC offset is metadata; retain local wall-clock time consistently.
+				$time = $attributes['time'] -replace '[+-]\d+$', ''
+				$timestamp = [datetime]::MinValue
+				$validTimestamp = [datetime]::TryParseExact(
+					"$($attributes['date']) $time",
+					[string[]]@('M-d-yyyy H:m:s.FFFFFFF', 'M-d-yyyy H:m:s'),
+					[System.Globalization.CultureInfo]::InvariantCulture,
+					[System.Globalization.DateTimeStyles]::None,
+					[ref]$timestamp)
+				if(-not $validTimestamp) {
+					Add-IMEParseIssue $diagnostic $pending 'Missing or invalid CMTrace date/time metadata (expected month-day-year and time with up to seven fractional digits).'
+					$pending.Clear()
+					continue
+				}
+
+				$dateText = $timestamp.ToString('yyyy-MM-dd HH:mm:ss.fffffff', [System.Globalization.CultureInfo]::InvariantCulture)
+				for($p = 0; $p -lt $pending.Count; $p++) {
+					$multiline = ''
+					$message = $pending[$p].Text
+					if($pending.Count -gt 1) {
+						if($p -eq 0) { $multiline = '<----' }
+						elseif($p -eq $pending.Count - 1) { $multiline = '---->' }
+						else { $multiline = ' --- ' }
+					}
+					if($p -eq 0 -or $p -eq $pending.Count - 1) { $message = $message.Trim() }
+					$Entries.Add([PSCustomObject]@{
+						Index = $null
+						LogEntryDateTime = $timestamp
+						FileName = $Source.RelativePath
+						Line = $pending[$p].Line
+						DateTime = $dateText
+						Multiline = $multiline
+						ProcessRunTime = ''
+						Message = $message
+						Component = $attributes['component']
+						Context = $attributes['context']
+						Type = $attributes['type']
+						Thread = $attributes['thread']
+						File = $attributes['file']
+					})
+				}
+				$diagnostic.Records++
+				$diagnostic.ParsedLines += $pending.Count
+				if($null -eq $diagnostic.FirstTimestamp -or $timestamp -lt $diagnostic.FirstTimestamp) {
+					$diagnostic.FirstTimestamp = $timestamp
+				}
+				if($null -eq $diagnostic.LastTimestamp -or $timestamp -gt $diagnostic.LastTimestamp) {
+					$diagnostic.LastTimestamp = $timestamp
+				}
+				$pending.Clear()
+			}
+			if($pending.Count -gt 0) {
+				Add-IMEParseIssue $diagnostic $pending 'Unterminated CMTrace record at end of file.'
+			}
+			if($diagnostic.Records -eq 0) {
+				$diagnostic.Status = 'No usable records'
+				$diagnostic.Reason = 'Empty file or no complete CMTrace records with a valid timestamp.'
+			} elseif($diagnostic.RejectedLines -gt 0) {
+				$diagnostic.Status = 'Partial'
+				$diagnostic.Reason = 'Some lines were excluded; see the rejected-line details.'
+			} else {
+				$diagnostic.Status = 'Read'
+			}
+		} catch [System.IO.IOException], [System.UnauthorizedAccessException], [System.InvalidOperationException] {
+			$diagnostic.Status = 'Read error'
+			$diagnostic.Reason = $_.Exception.Message
+			Add-IMEParseIssue $diagnostic $pending 'Record interrupted by a file or archive read error.'
+			Write-Warning "Cannot completely read '$($Source.RelativePath)': $($_.Exception.Message)"
+		} finally {
+			if($reader) { $reader.Dispose() }
+			elseif($stream) { $stream.Dispose() }
+		}
+		if($diagnostic.RejectedLines -gt 0 -or $diagnostic.Records -eq 0) {
+			Write-Warning "$($Source.RelativePath): $($diagnostic.Records) records read, $($diagnostic.RejectedLines) lines rejected. $($diagnostic.Reason)"
+		}
+	}
+
 # endregion Functions
 
 ################ Functions ################
 
 Write-Host "Starting Get-IntuneManagementExtensionDiagnostics`n"
 
-# If LogFilePath is not specified then show log files in Out-GridView
-# from folder C:\ProgramData\Microsoft\intunemanagementextension\Logs
-if($LOGFile) {
-
-	if(-not (Test-Path $LOGFile)) {
-		Write-Host "Log file does not exist: $LOGFile" -ForegroundColor Yellow
-		Write-Host "Script will exit" -ForegroundColor Yellow
-		Write-Host ""
-		Exit 0
-	}
-	$SelectedLogFiles = Get-ChildItem -Path $LOGFile
-	
-} else {
-
-	if($LogFilesFolder) {
-
-		if(-not (Test-Path $LogFilesFolder)) {
-			Write-Host "LogFilesFolder: $LogFilesFolder does not exist" -ForegroundColor Yellow
-			Write-Host "Script will exit" -ForegroundColor Yellow
-			exit 0
-		}
-
-		# Sort files: new files first and IntuneManagementExtension before AgentExecutor
-		
-		# ORIGINAL
-		#$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') -or ($_.Name -like '*AppWorkload*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-
-		# Added -Depth 2 so you can point to Intune Diagnostics package root folder
-		$LogFiles = Get-ChildItem -Path $LogFilesFolder -Filter *.log -Depth 2 | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') -or ($_.Name -like '*AppWorkload*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-
-
-	} else {
-		# Running report using local computer's Intune log files
-
-		# Save Computer Name
-		$ComputerNameForReport = $env:ComputerName
-		
-		# Sort files: new files first and IntuneManagementExtension before AgentExecutor
-		#$LogFiles = Get-ChildItem -Path 'C:\ProgramData\Microsoft\intunemanagementextension\Logs' -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') -or ($_.Name -like '*AppWorkload*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-		$LogFiles = Get-ChildItem -Path 'C:\ProgramData\Microsoft\intunemanagementextension\Logs' -Filter *.log | Where-Object { ($_.Name -like '*IntuneManagementExtension*.log') -or ($_.Name -like '*AgentExecutor*.log') -or ($_.Name -like '*AppWorkload*.log') -or ($_.Name -like '*HealthScripts*.log') } | Sort-Object -Property Name -Descending | Sort-Object -Property LastWriteTime -Descending
-	}
-	
-	# Show log files in Out-GridView
-	# This variable is automatically configured in ESP
-	if(-not $SelectedLogFiles) {
-		if($AllLogFiles) {
-			$SelectedLogFiles = $LogFiles
-		} else {
-			$SelectedLogFiles = $LogFiles | Out-GridView -Title 'Select log file to show in Out-GridView from path C:\ProgramData\Microsoft\intunemanagementextension\Logs' -OutputMode Multiple
-		}
-	}
-	
-	if(-not $SelectedLogFiles) {
-		Write-Host "No log file(s) selected. Script will exit!`n" -ForegroundColor Yellow
-		Exit 0
-	}
+if($ExportHTMLReportPath -and -not (Test-Path -LiteralPath $ExportHTMLReportPath -PathType Container)) {
+	throw "Output directory does not exist: $ExportHTMLReportPath"
 }
+if($LogFilesFolder) {
+	if(-not (Test-Path -LiteralPath $LogFilesFolder -PathType Container)) {
+		throw "LogFilesFolder must be an existing directory: $LogFilesFolder"
+	}
+	$InputPath = $LogFilesFolder
+}
+$inputItem = Get-Item -LiteralPath $InputPath -ErrorAction Stop
+$InputSourcePath = $inputItem.FullName
+$InputArchive = $null
+
+try {
+	if($inputItem.PSIsContainer) {
+		$prefix = $inputItem.FullName.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+		$LogFiles = @(Get-ChildItem -LiteralPath $InputSourcePath -Recurse -File -ErrorAction Stop | ForEach-Object {
+			New-IMELogSource -Name $_.Name -FullName $_.FullName -RelativePath $_.FullName.Substring($prefix.Length) -Length $_.Length -LastWriteTime $_.LastWriteTime
+		})
+	} elseif($inputItem.Extension -ieq '.zip') {
+		Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+		$InputArchive = [System.IO.Compression.ZipFile]::OpenRead($InputSourcePath)
+		$LogFiles = @($InputArchive.Entries | Where-Object { $_.Name } | ForEach-Object {
+			New-IMELogSource -Name $_.Name -FullName "${InputSourcePath}::$($_.FullName)" -RelativePath $_.FullName.Replace('/', '\') -Length $_.Length -LastWriteTime $_.LastWriteTime.DateTime -ArchiveEntry $_
+		})
+	} elseif($inputItem.Extension -in @('.log', '.lo_')) {
+		$LogFiles = @(New-IMELogSource -Name $inputItem.Name -FullName $inputItem.FullName -RelativePath $inputItem.Name -Length $inputItem.Length -LastWriteTime $inputItem.LastWriteTime)
+	} else {
+		throw "Unsupported input '$InputSourcePath'. Specify a folder, .zip, .log or .lo_ file."
+	}
+	$LogFiles = @($LogFiles | Sort-Object -Property @{Expression='LastWriteTime';Descending=$true}, @{Expression='RelativePath';Descending=$true})
+	if($LogFiles.Count -eq 0) {
+		$InputFileDiagnostics | Format-Table File, Status, Reason -AutoSize | Out-Host
+		throw "No .log or .lo_ files found in '$InputSourcePath'. Nested ZIPs are not expanded."
+	}
+	if($AllLogFiles) {
+		$SelectedLogFiles = $LogFiles
+	} else {
+		$SelectedLogFiles = @($LogFiles | Select-Object Name, RelativePath, LastWriteTime, FullName, ArchiveEntry, Diagnostics |
+			Out-GridView -Title "Select log files from $InputSourcePath" -OutputMode Multiple)
+		foreach($source in $LogFiles) {
+			if($source -notin $SelectedLogFiles -and $source.Diagnostics -notin $SelectedLogFiles.Diagnostics) {
+				$source.Diagnostics.Status = 'Not selected'
+				$source.Diagnostics.Reason = 'Excluded by interactive file selection.'
+			}
+		}
+	}
+	if(-not $SelectedLogFiles) {
+		throw 'No log files selected.'
+	}
 
 
 # Check whether we show time selection on Out-GridView or not
@@ -1285,7 +1528,7 @@ if(((-not $LogStartDateTime) -and (-not $LogEndDateTime)) -and (-not $AllLogEntr
 		$LogEndDateTimeObject = (Get-Date).AddYears(1000)
 	}
 
-	if($AllLogEntries) {
+	if($AllLogEntries -and -not $Today) {
 		# Use StartTime from year 1900
 		$LogStartDateTimeObject = Get-Date 1/1/1900
 		
@@ -1300,9 +1543,7 @@ if(((-not $LogStartDateTime) -and (-not $LogEndDateTime)) -and (-not $AllLogEntr
 		Try {
 			$LogStartDateTimeObject = Get-Date $LogStartDateTime
 		} catch {
-			Write-Host "Given parameter LogStartDateTime is not in valid DateTime format." -ForegroundColor Red
-			Write-Host "Script will exit"
-			Exit 0
+			throw "LogStartDateTime is not a valid date/time: $LogStartDateTime"
 		}
 	}
 
@@ -1313,13 +1554,14 @@ if(((-not $LogStartDateTime) -and (-not $LogEndDateTime)) -and (-not $AllLogEntr
 		Try {
 			$LogEndDateTimeObject = Get-Date $LogEndDateTime
 		} catch {
-			Write-Host "Given parameter LogEndDateTime is not in valid DateTime format." -ForegroundColor Red
-			Write-Host "Script will exit"
-			Exit 0
+			throw "LogEndDateTime is not a valid date/time: $LogEndDateTime"
 		}
 	}
 }
 
+if($LogStartDateTimeObject -is [datetime] -and $LogEndDateTimeObject -is [datetime] -and $LogStartDateTimeObject -ge $LogEndDateTimeObject) {
+	throw 'LogStartDateTime must be earlier than LogEndDateTime.'
+}
 
 # Download Powershell scripts, Proactive Remediation scripts and custom Compliance Policy scripts
 if ($Online) {
@@ -1546,307 +1788,40 @@ do {
 
 	# Create Generic list where log entry custom objects are added
 	$LogEntryList = [System.Collections.Generic.List[PSObject]]@()
+	$observedTimeline.Clear()
+	$ApplicationDownloadStatistics.Clear()
+	$ApplicationAssignmentFilterApplied.Clear()
+	$TargetedAppPolicySnapshots.Clear()
+	$LogParseIssues.Clear()
+	$Script:observedTimeLineIndexToHTMLTable = 0
+	$ProcessedRemediationStarts = [System.Collections.Generic.HashSet[int]]::new()
 	
 	# Go through all selected log file(s)
 	Foreach ($SelectedLogFile in $SelectedLogFiles) {
 
 		$LogFilePath = $SelectedLogFile.FullName
-		$LogFileName = $SelectedLogFile.Name
+		$LogFileName = $SelectedLogFile.RelativePath
 
 		Write-Host "Processing file $LogFileName"
-
-		# Initialize variables
-		$LineNumber=1
-		$MultilineLogEntryStartsArrayIndex=0
-		$MultilineLogEntryStartFound=$False
-
-		$Log = Get-Content -Path $LogFilePath
-
-		# This matches for cmtrace type logs
-		# Test with https://regex101.com
-		# String: <![LOG[ExecutorLog AgentExecutor gets invoked]LOG]!><time="21:38:06.3814532" date="2-14-2023" component="AgentExecutor" context="" type="1" thread="1" file="">
-
-		# This matches single line full log entry
-		$SingleLineRegex = '^\<\!\[LOG\[(.*)]LOG\].*\<time="([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}).([0-9]{1,})".*date="([0-9]{1,2})-([0-9]{1,2})-([0-9]{4})" component="(.*?)" context="(.*?)" type="(.*?)" thread="(.*?)" file="(.*?)">$'
-
-		# Start of multiline log entry
-		$FirstLineOfMultiLineLogRegex = '^\<\!\[LOG\[(.*)$'
-
-		# End of multiline log entry
-		$LastLineOfMultiLineLogRegex = '^(.*)\]LOG\]\!>\<time="([0-9]{1,2}):([0-9]{1,2}):([0-9]{1,2}).([0-9]{1,})".*date="([0-9]{1,2})-([0-9]{1,2})-([0-9]{4})" component="(.*?)" context="(.*?)" type="(.*?)" thread="(.*?)" file="(.*?)">$'
-
-
-		# Process each log file line one by one
-		Foreach ($CurrentLogEntry in $Log) {
-
-			# Get data from CurrentLogEntry
-			if($CurrentLogEntry -Match $SingleLineRegex) {
-				# This matches single line log entry
-				
-				# Regex found match
-				$LogMessage = $Matches[1].Trim()
-
-				$Hour = $Matches[2]
-				$Minute = $Matches[3]
-				$Second = $Matches[4]
-				
-				$MilliSecondFull = $Matches[5]
-				# Cut milliseconds to 0-999
-				# Time unit is so small that we don't even bother to round the value
-				$MilliSecond = $MilliSecondFull.Substring(0,3)
-
-				$Month = $Matches[6]
-				$Day = $Matches[7]
-				$Year = $Matches[8]
-				
-				$Component = $Matches[9]
-				$Context = $Matches[10]
-				$Type = $Matches[11]
-				$Thread = $Matches[12]
-				$File = $Matches[13]
-
-				$Param = @{
-					Hour=$Hour
-					Minute=$Minute
-					Second=$Second
-					MilliSecond=$MilliSecond
-					Year=$Year
-					Month=$Month
-					Day=$Day
-				}
-
-				$LogEntryDateTime = Get-Date @Param
-				#Write-Host "DEBUG `$LogEntryDateTime: $LogEntryDateTime" -ForegroundColor Yellow
-				
-				# This works for humans but does not sort
-				#$DateTimeToLogFile = "$($Hour):$($Minute):$($Second).$MilliSecondFull $Day/$Month/$Year"
-
-				# Add leading 0 so sorting works right
-				if($Month -like "?") { $Month = "0$Month" }
-
-				# Add leading 0 so sorting works right
-				if($Day -like "?") { $Day = "0$Day" }
-
-				# This does sorting right way
-				$DateTimeToLogFile = "$Year-$Month-$Day $($Hour):$($Minute):$($Second).$MilliSecondFull"
-
-				# Create Powershell custom object and add it to list
-				$LogEntryList.add([PSCustomObject]@{
-					'Index' = $null;
-					'LogEntryDateTime' = $LogEntryDateTime;
-					'FileName' = $LogFileName;
-					'Line' = $LineNumber;
-					'DateTime' = $DateTimeToLogFile;
-					'Multiline' = '';
-					'ProcessRunTime' = $ProcessRunTime;
-					'Message' = $LogMessage;
-					'Component' = $Component;
-					'Context' = $Context;
-					'Type' = $Type;
-					'Thread' = $Thread;
-					'File' = $File
-					})
-
-			} elseif ($CurrentLogEntry -Match $FirstLineOfMultiLineLogRegex) {
-				# This is start of multiline log entry
-				# Single line regex did not get results so we are dealing multiline case separately here
-
-				#Write-Host "DEBUG Start of multiline regex: $CurrentLogEntry" -ForegroundColor Yellow
-
-				$MultilineLogEntryStartFound=$True
-
-				# Regex found match
-				$LogMessage = $Matches[1].Trim()
-				
-				$LogEntryDateTime = ''
-				$DateTimeToLogFile = ''
-				$Component = ''
-				$Context = ''
-				$Type = ''
-				$Thread = ''
-				$File = ''
-
-				# Create Powershell custom object and add it to list
-				$LogEntryList.add([PSCustomObject]@{
-					'Index' = $null;
-					'LogEntryDateTime' = $LogEntryDateTime;
-					'FileName' = $LogFileName;
-					'Line' = $LineNumber;
-					'DateTime' = $DateTimeToLogFile;
-					'Multiline' = '';
-					'ProcessRunTime' = '';
-					'Message' = $LogMessage;
-					'Component' = $Component;
-					'Context' = $Context;
-					'Type' = $Type;
-					'Thread' = $Thread;
-					'File' = $File
-					})
-
-				$MultilineLogEntryStartsArrayIndex = $LogEntryList.Count - 1
-
-			} elseif ($CurrentLogEntry -Match $LastLineOfMultiLineLogRegex) {
-				# This is end of multiline log entry
-				# Single line regex did not get results so we are dealing multiline case separately here
-
-				# Regex found match
-				$LogMessage = $Matches[1].Trim()
-
-				$Hour = $Matches[2]
-				$Minute = $Matches[3]
-				$Second = $Matches[4]
-				
-				$MilliSecondFull = $Matches[5]
-				# Cut milliseconds to 0-999
-				# Time unit is so small that we don't even bother to round the value
-				$MilliSecond = $MilliSecondFull.Substring(0,3)
-				
-				$Month = $Matches[6]
-				$Day = $Matches[7]
-				$Year = $Matches[8]
-				
-				$Component = $Matches[9]
-				$Context = $Matches[10]
-				$Type = $Matches[11]
-				$Thread = $Matches[12]
-				$File = $Matches[13]
-
-				$Param = @{
-					Hour=$Hour
-					Minute=$Minute
-					Second=$Second
-					MilliSecond=$MilliSecond
-					Year=$Year
-					Month=$Month
-					Day=$Day
-				}
-
-				$LogEntryDateTime = Get-Date @Param
-				#Write-Host "DEBUG `$LogEntryDateTime: $LogEntryDateTime" -ForegroundColor Yellow
-
-				# This works for humans but does not sort
-				#$DateTimeToLogFile = "$($Hour):$($Minute):$($Second).$MilliSecondFull $Day/$Month/$Year"
-
-				# Add leading 0 so sorting works right
-				if($Month -like "?") { $Month = "0$Month" }
-
-				# Add leading 0 so sorting works right
-				if($Day -like "?") { $Day = "0$Day" }
-
-				# This does sorting right way
-				$DateTimeToLogFile = "$Year-$Month-$Day $($Hour):$($Minute):$($Second).$MilliSecondFull"
-
-				if($MultilineLogEntryStartFound) {
-					$Multiline = '---->'
-				} else {
-					$Multiline = ''
-				}
-
-				# Create Powershell custom object and add it to list
-				$LogEntryList.add([PSCustomObject]@{
-					'Index' = $null;
-					'LogEntryDateTime' = $LogEntryDateTime;
-					'FileName' = $LogFileName;
-					'Line' = $LineNumber;
-					'DateTime' = $DateTimeToLogFile;
-					'Multiline' = $Multiline;
-					'ProcessRunTime' = '';
-					'Message' = $LogMessage;
-					'Component' = $Component;
-					'Context' = $Context;
-					'Type' = $Type;
-					'Thread' = $Thread;
-					'File' = $File
-					})
-
-				# Process previous lines and add DateTime, Multiline, Component, Context, Type, Thread and File
-				# There can be corrupted log entries so there can be multiline entries without proper multiline start log entry
-				# So we will add information until we find log entry which has DateTime value
-
-				$MultilineLogEntryEndsArrayIndex = $LogEntryList.Count - 1
-				
-				# Add data to starting multiline log entry object
-				# DateTime, Component, Context, Type, Thread, File information
-				$LogEntryList[$MultilineLogEntryStartsArrayIndex].LogEntryDateTime = $LogEntryDateTime
-				$LogEntryList[$MultilineLogEntryStartsArrayIndex].DateTime = $DateTimeToLogFile
-				$LogEntryList[$MultilineLogEntryStartsArrayIndex].Multiline = '<----'
-				$LogEntryList[$MultilineLogEntryStartsArrayIndex].Component = $Component
-				$LogEntryList[$MultilineLogEntryStartsArrayIndex].Context = $Context
-				$LogEntryList[$MultilineLogEntryStartsArrayIndex].Type = $Type
-				$LogEntryList[$MultilineLogEntryStartsArrayIndex].Thread = $Thread
-				$LogEntryList[$MultilineLogEntryStartsArrayIndex].File = $File
-				
-				# Add data to multiline entries which are not end or start entries
-				#if($MultilineLogEntryEndsArrayIndex - $MultilineLogEntryStartsArrayIndex -gt 1) {
-					# Multiline entry is more than 2 lines
-
-					# Add DateTime, Component, Context, Type, Thread, File information
-					# to Multiline log entry from last to first
-					#for($i=$MultilineLogEntryEndsArrayIndex - 1; $i -gt $MultilineLogEntryStartsArrayIndex ; $i--) {
-					
-					# Add information to previous log entries if they don't have DateTime-value
-					# Stop when we find DateTime-value
-					$i = $MultilineLogEntryEndsArrayIndex -1
-					While($LogEntryList[$i].DateTime -eq $null) {
-						#Write-Host "DEBUG: Multiline add data: `$MultilineLogEntryStartsArrayIndex=$MultilineLogEntryStartsArrayIndex `$MultilineLogEntryEndsArrayIndex=$MultilineLogEntryEndsArrayIndex `$i=$i `$Message=$($LogEntryList[$i].Message)"
-						
-						$LogEntryList[$i].LogEntryDateTime = $LogEntryDateTime
-						$LogEntryList[$i].DateTime = $DateTimeToLogFile
-						$LogEntryList[$i].Multiline = ' --- '
-						$LogEntryList[$i].Component = $Component
-						$LogEntryList[$i].Context = $Context
-						$LogEntryList[$i].Type = $Type
-						$LogEntryList[$i].Thread = $Thread
-						$LogEntryList[$i].File = $File
-						
-						$i--
-					}
-					
-			} else {
-				# We didn't catch log entry with our regex
-				# This should be multiline log entry but not first or last line in that log entry
-				# This can also be some line that should be matched with (other) regex
-				
-				#Write-Host "DEBUG: $CurrentLogEntry"  -ForegroundColor Yellow
-				
-				# Create Powershell custom object and add it to list
-				$LogEntryList.add([PSCustomObject]@{
-					'Index' = $null;
-					'LogEntryDateTime' = $null;
-					'FileName' = $LogFileName;
-					'Line' = $LineNumber;
-					'DateTime' = $null;
-					'Multiline' = '';
-					'ProcessRunTime' = $null;
-					'Message' = $CurrentLogEntry;
-					'Component' = '';
-					'Context' = '';
-					'Type' = '';
-					'Thread' = '';
-					'File' = ''
-					})
-			}
-
-			$LineNumber++
-
-		} # Foreach end single log file line by line foreach
-	
+		$diagnostic = $SelectedLogFile.Diagnostics
+		foreach($property in @('Lines', 'Records', 'ParsedLines', 'RejectedLines', 'BlankLines')) {
+			$diagnostic.$property = 0
+		}
+		$diagnostic.FirstTimestamp = $null
+		$diagnostic.LastTimestamp = $null
+		$diagnostic.Reason = ''
+		Read-IMELogFile -Source $SelectedLogFile -Entries $LogEntryList
 	} # Foreach end all log files
 	Write-Host ""
 
-	# Check if there was log entries/lines which were not detected
-	$DroppedLines = $LogEntryList | Where-Object DateTime -eq $null
-	if($DroppedLines) {
-		Write-Host "These lines were detected not to have right syntax so they were dropped" -ForegroundColor Yellow
-		Foreach($Line in $DroppedLines) {
-			Write-Host "$($Line.FileName) Line $($Line.Line) $($Line.Message)"
-			
-			# FIXME Copy timestamp from previous log entry
-			
-		}
-		Write-Host ""
+	$InputFileDiagnostics | Format-Table File, Status, Records, ParsedLines, RejectedLines -AutoSize | Out-Host
+	if($LogParseIssues.Count -gt 0) {
+		$LogParseIssues | Format-List File, Line, Lines, Reason | Out-Host
 	}
-
+	if($LogEntryList.Count -eq 0) {
+		throw 'No usable CMTrace records were found. See the file diagnostics and rejected-line reasons above.'
+	}
+	$ParsedInputLineCount = $LogEntryList.Count
 
 	# Take last $LogEntryDateTime and add 1 seconds to it
 	$ReloadDate = (Get-Date).AddHours(1)
@@ -1919,7 +1894,8 @@ do {
 	# We need to sort with DateTime AND Line
 	# because there can are multiple log entries with same timestamp
 	#$LogEntryList = $LogEntryList | Sort-Object -Property DateTime, Line
-	$LogEntryList = $LogEntryList | Where-Object { ($_.LogEntryDateTime -gt $LogStartDateTimeObject) -and ($_.LogEntryDateTime -lt $LogEndDateTimeObject) } | Sort-Object -Property DateTime, Line
+	$LogEntryList = @($LogEntryList | Where-Object { ($_.LogEntryDateTime -ge $LogStartDateTimeObject) -and ($_.LogEntryDateTime -lt $LogEndDateTimeObject) } | Sort-Object -Property LogEntryDateTime, FileName, Line)
+	$FilteredInputLineCount = @($LogEntryList | Where-Object { $_.FileName }).Count
 
 	# Add Index property value
 	# This is used for sorting when doing analyzing in Out-GridView
@@ -2739,6 +2715,12 @@ do {
 
 		# Find Remediation Detect and Remediate tasks
 		if($LogEntryList[$i].Message -like '"C:\Program Files (x86)\Microsoft Intune Management Extension\agentexecutor.exe"  -remediationScript  ""C:\Windows\IMECache\HealthScripts\*\*.ps1""*') {
+			if(-not $ProcessedRemediationStarts.Add($i)) {
+				$i++
+				Continue
+			}
+			$RemediationStartSources = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+			$null = $RemediationStartSources.Add((Get-IMERemediationLogFamily $LogEntryList[$i]))
 			# Proactive Remediation script = policyType 6
 			# custom Compliance script = policyType 8
 
@@ -2777,6 +2759,7 @@ do {
 				$RemediationExitCode = $null
 				$RemediationScriptName = $null
 				$RemediationScriptPowershellScript = $null
+				$RemediationScriptPolicyType = $null
 
 				# Try to find displayName
 				if($IdHashtable.ContainsKey($PolicyId)) {
@@ -2841,6 +2824,25 @@ do {
 				
 				# Now we go down (to end)
 				for($b = $i + 1; $b -lt $LogEntryList.Count; $b++ ) {
+					if($LogEntryList[$b].Message -like '"C:\Program Files (x86)\Microsoft Intune Management Extension\agentexecutor.exe"  -remediationScript  ""C:\Windows\IMECache\HealthScripts\*\*.ps1""*') {
+						if($LogEntryList[$b].Thread -ne $Thread) {
+							continue
+						}
+						$startFamily = Get-IMERemediationLogFamily $LogEntryList[$i]
+						$nextFamily = Get-IMERemediationLogFamily $LogEntryList[$b]
+						$startOffset = ($LogEntryList[$b].LogEntryDateTime - $LogEntryList[$i].LogEntryDateTime).TotalSeconds
+						# Mirror only the other log family, not another execution in the same source.
+						if($LogEntryList[$b].Message -eq $LogEntryList[$i].Message -and
+							$startFamily -in @('IntuneManagementExtension', 'HealthScripts') -and
+							$nextFamily -in @('IntuneManagementExtension', 'HealthScripts') -and
+							$startOffset -ge 0 -and $startOffset -le 1 -and
+							-not $RemediationStartSources.Contains($nextFamily)) {
+							$null = $RemediationStartSources.Add($nextFamily)
+							$null = $ProcessedRemediationStarts.Add($b)
+							continue
+						}
+						break
+					}
 
 					# Use this to debug Remediations log entries
 					#Write-Host "DEBUG: $b - $($LogEntryList[$b].Message)"
@@ -2901,25 +2903,27 @@ do {
 						
 						#Write-Host "Found Remediation powershell command AgentExecutor success message: $($AgentExecutorPowershellSuccessMessage). Line: $($LogEntryList[$b].Line)" -ForegroundColor Red
 						
-						# Next multiline log entry should be possible output and error
-						
-						# "goto" next log line
-						$b++
-						
+						# Peek at output without consuming the next execution's start or completion.
+						$outputIndex = $b + 1
 						$scriptOutputStringArray = @()
-						if(($LogEntryList[$b].Message -Match '^write output done. (output =.*)$') -and ($LogEntryList[$b].Component -eq 'AgentExecutor') -and ($AgentExecutorPowershellSuccessMessageFound)) {
-							$FirstOutputLine = $Matches[1]
-							$scriptOutputStringArray += $FirstOutputLine
-							
-							$b++
-							
-							# Loop through next lines until we find multiline log entry ----> end character from Multiline property
-							While(($LogEntryList[$b].Multiline -ne '---->') -and ($LogEntryList[$b].Component -eq 'AgentExecutor')) {
-								$scriptOutputStringArray += $LogEntryList[$b].Message
-								
-								$b++
+						if($outputIndex -lt $LogEntryList.Count -and ($LogEntryList[$outputIndex].Message -Match '^write output done. (output =.*)$') -and ($LogEntryList[$outputIndex].Component -eq 'AgentExecutor') -and ($AgentExecutorPowershellSuccessMessageFound)) {
+							$scriptOutputStringArray += $Matches[1]
+							$outputStart = $LogEntryList[$outputIndex]
+							$b = $outputIndex
+							if($outputStart.Multiline -eq '<----') {
+								$outputIndex++
+								While($outputIndex -lt $LogEntryList.Count -and
+									$LogEntryList[$outputIndex].FileName -eq $outputStart.FileName -and
+									$LogEntryList[$outputIndex].LogEntryDateTime -eq $outputStart.LogEntryDateTime -and
+									$LogEntryList[$outputIndex].Multiline -in @(' --- ', '---->')) {
+									$b = $outputIndex
+									if($LogEntryList[$outputIndex].Multiline -eq '---->') { break }
+									$scriptOutputStringArray += $LogEntryList[$outputIndex].Message
+									$outputIndex++
+								}
 							}
 						}
+						continue
 					}
 
 
@@ -2927,7 +2931,7 @@ do {
 
 					# Remediation script script is done
 					# This is our end message we are looking for
-					if(($LogEntryList[$b].Message -Match '^Powershell execution is done, exitCode = (.*)$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
+					if($b -lt $LogEntryList.Count -and ($LogEntryList[$b].Message -Match '^Powershell execution is done, exitCode = (.*)$') -and ($LogEntryList[$b].Thread -eq $Thread)) {
 						$RemediationExitCode = $Matches[1]
 						
 						$RemediationScriptEndDateTime = $LogEntryList[$b].DateTime
@@ -2959,13 +2963,13 @@ do {
 						if($RemediationExitCode -eq 0) {
 							# Remediation Detect Successful
 							
-							RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status "Success" -Type "$RemediationScriptPolicyTypeName" -Intent $intent -detail $detail -detailToolTip $detailToolTip -Seconds $ProcessRunTimeTotalSeconds -Color 'Green' -logEntry "Line $($LogEntryList[$i].Line)"
+							RecordStatusToTimeline -date $RemediationScriptEndDateTime -status "Success" -Type "$RemediationScriptPolicyTypeName" -Intent $intent -detail $detail -detailToolTip $detailToolTip -Seconds $ProcessRunTimeTotalSeconds -Color 'Green' -logEntry "Line $($LogEntryList[$b].Line)"
 							
-							$LogEntryList[$b].ProcessRunTime = "Remediation Detected with exitCode 0 $($RemediationDurationDateTimeObject.Seconds) seconds"
+							$LogEntryList[$b].ProcessRunTime = "Remediation Detected with exitCode 0 $ProcessRunTimeTotalSeconds seconds"
 						} else {
 							# Remediation Detect was NOT successful
 						
-							if($RemediationScriptPolicyTypeName -eq 'remediate') {
+							if($intent -eq 'Remediate') {
 								$status = 'Failed'
 								$color = 'Red'
 							} else {
@@ -2974,9 +2978,9 @@ do {
 								$color = 'Yellow'
 							}
 						
-							RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status $status -Type "$RemediationScriptPolicyTypeName" -Intent $intent -detail $detail -detailToolTip $detailToolTip -Seconds $ProcessRunTimeTotalSeconds -Color $color -logEntry "Line $($LogEntryList[$i].Line)"
+							RecordStatusToTimeline -date $RemediationScriptEndDateTime -status $status -Type "$RemediationScriptPolicyTypeName" -Intent $intent -detail $detail -detailToolTip $detailToolTip -Seconds $ProcessRunTimeTotalSeconds -Color $color -logEntry "Line $($LogEntryList[$b].Line)"
 							
-							$LogEntryList[$b].ProcessRunTime = "Remediation Not Detected with exitCode $RemediationExitCode $($RemediationDurationDateTimeObject.Seconds) seconds"
+							$LogEntryList[$b].ProcessRunTime = "Remediation Not Detected with exitCode $RemediationExitCode $ProcessRunTimeTotalSeconds seconds"
 						}
 						
 						# Break for loop
@@ -2985,29 +2989,18 @@ do {
 					}
 
 
-					# We didn't catch Remediation task end log entry previously
-					# because this will catch next remediation script start
-					#
-					# We should never get here
-					if($LogEntryList[$b].Message -like '"C:\Program Files (x86)\Microsoft Intune Management Extension\agentexecutor.exe"  -remediationScript  ""C:\Windows\IMECache\HealthScripts\*\*.ps1""*') {
-					
-						$status = 'Start'
-						$detail = "$RemediationScriptName"
-						$detailToolTip = "##########################################`nScript:`n`n$ScriptInClearText"
-						
-						# Print Remediation started but not ended
-						RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status $status -Type "$RemediationScriptPolicyTypeName" -Intent $intent -detail $detail -detailToolTip $detailToolTip -Seconds 0 -Color 'Red' -logEntry "Line $($LogEntryList[$i].Line)"
-						
-						$status = 'Warning'
-						$detail = "`tRemediation started but we did not detect process end"
-						RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status $status -Type "$RemediationScriptPolicyTypeName" -Intent $intent -detail $detail -detailToolTip $detailToolTip -Seconds 0 -Color 'Red' -logEntry "Line $($LogEntryList[$i].Line)"
-						
-						# Break for loop
-						Break
-					}
-
-
 				} # For-loop end
+
+				if(-not $RemediationScriptEndDateTime) {
+					$status = 'Start'
+					$detail = "$RemediationScriptName"
+					$detailToolTip = "##########################################`nScript:`n`n$ScriptInClearText"
+					RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status $status -Type "$RemediationScriptPolicyTypeName" -Intent $intent -detail $detail -detailToolTip $detailToolTip -Seconds 0 -Color 'Red' -logEntry "Line $($LogEntryList[$i].Line)"
+
+					$status = 'Warning'
+					$detail = "`tRemediation started but we did not detect process end"
+					RecordStatusToTimeline -date $LogEntryList[$i].DateTime -status $status -Type "$RemediationScriptPolicyTypeName" -Intent $intent -detail $detail -detailToolTip $detailToolTip -Seconds 0 -Color 'Red' -logEntry "Line $($LogEntryList[$i].Line)"
+				}
 
 			}
 			
@@ -4938,6 +4931,42 @@ do {
 	.context-menu ul li:hover {
 	  background-color: #eee; /* Lighter hover background for better visibility */
 	}
+
+	.input-diagnostics {
+	  margin-block: 1.5rem 2rem;
+	}
+	.input-diagnostics p {
+	  max-width: 85ch;
+	  overflow-wrap: anywhere;
+	}
+	.input-diagnostics summary {
+	  min-height: 44px;
+	  display: list-item;
+	  align-content: center;
+	  cursor: pointer;
+	  font-weight: bold;
+	}
+	.input-diagnostics summary:focus-visible,
+	.input-diagnostics .table-scroll:focus-visible {
+	  outline: 2px solid #1C6EA4;
+	  outline-offset: 3px;
+	}
+	.input-diagnostics .table-scroll {
+	  overflow-x: auto;
+	  margin-block: 0.5rem 1rem;
+	}
+	.input-diagnostics th,
+	.input-diagnostics td {
+	  padding: 0.5rem;
+	  vertical-align: top;
+	  overflow-wrap: anywhere;
+	}
+	.input-diagnostics th,
+	.input-diagnostics .rejected-lines td:nth-child(2),
+	.input-diagnostics .rejected-lines td:nth-child(3) {
+	  white-space: nowrap;
+	  overflow-wrap: normal;
+	}
 	</style>
 '@
 
@@ -5010,12 +5039,7 @@ do {
 
 		}
 		catch {
-			Write-Error "$($_.Exception.GetType().FullName)"
-			Write-Error "$($_.Exception.Message)"
-			Write-Error "Error creating HTML fragment information"
-			Write-Host "Script will exit..."
-			Pause
-			Exit 1        
+			throw "Error creating the timeline HTML fragment: $($_.Exception.Message)"
 		}
 		#############################
 		# Create html
@@ -5025,34 +5049,61 @@ do {
 
 			$ReportRunDateTime = (Get-Date).ToString("yyyyMMddHHmm")
 			$ReportRunDateTimeHumanReadable = (Get-Date).ToString("yyyy-MM-dd HH:mm")
-			$ReportRunDateFileName = (Get-Date).ToString("yyyyMMddHHmm")
-
-			if($ExportHTMLReportPath) {
-				if(Test-Path $ExportHTMLReportPath) {
-					$ReportSavePath = $ExportHTMLReportPath
-				} else {
-					Write-Host "Warning: Parameter -ExportHTMLReportPath specified but destination directory does not exists ($ExportHTMLReportPath) !" -ForegroundColor Yellow
-					Write-Host "Warning: Defaulting to running directory ($PSScriptRoot)!" -ForegroundColor Yellow
-					$ReportSavePath = $PSScriptRoot
-				}
-			} else {
-				$ReportSavePath = $PSScriptRoot
-			}
+			$ReportRunDateFileName = (Get-Date).ToString("yyyyMMdd-HHmmss-fff")
+			$ReportSavePath = if($ExportHTMLReportPath) {
+				(Get-Item -LiteralPath $ExportHTMLReportPath -ErrorAction Stop).FullName
+			} else { $PSScriptRoot }
 			
 			
 			if($ComputerNameForReport -eq 'N/A') {
 				$HTMLFileName = "$($ReportRunDateFileName)_Intune_Logs_Report.html"	
 			} else {
-				$HTMLFileName = "$($ReportRunDateFileName)_$($ComputerNameForReport)_Intune_Logs_Report.html"	
+				$safeComputerName = $ComputerNameForReport
+				foreach($invalidCharacter in [System.IO.Path]::GetInvalidFileNameChars()) {
+					$safeComputerName = $safeComputerName.Replace([string]$invalidCharacter, '_')
+				}
+				$HTMLFileName = "$($ReportRunDateFileName)_$($safeComputerName)_Intune_Logs_Report.html"
 			}
-			
-			
+			$encodedComputerName = [System.Net.WebUtility]::HtmlEncode($ComputerNameForReport)
+			$encodedSourcePath = [System.Net.WebUtility]::HtmlEncode($InputSourcePath)
+			$inputMode = if($UsingLocalLogs) { 'Local workstation logs (legacy mode)' } else { 'Explicit external source; no local fallback' }
+			$rejectedLineCount = ($InputFileDiagnostics | Measure-Object RejectedLines -Sum).Sum
+			$parsedRecordCount = ($InputFileDiagnostics | Measure-Object Records -Sum).Sum
+			$InputDiagnosticsHTML = @"
+		<section class="input-diagnostics" aria-labelledby="inputDiagnosticsHeading">
+		  <h2 id="inputDiagnosticsHeading">Input and analysis coverage</h2>
+		  <p><strong>Source:</strong> $encodedSourcePath</p>
+		  <p><strong>Input mode:</strong> $inputMode</p>
+		  <p><strong>$parsedRecordCount complete records read</strong> ($ParsedInputLineCount physical lines).
+		  $FilteredInputLineCount lines are in the selected time range; $rejectedLineCount lines were rejected.</p>
+		  <p>A parsed record is not necessarily a timeline event. The timeline uses partial, message-specific IME rules;
+		  other CMTrace records can be inspected with <code>-ShowLogViewerUI</code>.</p>
+		  <details>
+		    <summary>File inventory and coverage ($($InputFileDiagnostics.Count) files)</summary>
+		    <div class="table-scroll" role="region" aria-label="Input file inventory" tabindex="0">
+"@
+			$fileTable = $InputFileDiagnostics | Sort-Object File |
+				Select-Object File, Status, Coverage, Records, Lines, ParsedLines, RejectedLines, BlankLines, Reason |
+				ConvertTo-Html -Fragment | Out-String
+			$InputDiagnosticsHTML += $fileTable + '</div></details>'
+			if($LogParseIssues.Count -gt 0) {
+				$issueTable = $LogParseIssues | Sort-Object File, Line | ConvertTo-Html -Fragment | Out-String
+				$InputDiagnosticsHTML += '<details class="rejected-lines" open><summary>Rejected-line details</summary><div class="table-scroll" role="region" aria-label="Rejected-line reasons" tabindex="0">' + $issueTable + '</div></details>'
+			}
+			$InputDiagnosticsHTML += @'
+		  <p>Log roles checked against
+		  <a href="https://learn.microsoft.com/en-us/intune/device-management/tools/management-extension-windows#ime-log-files">Microsoft Learn: IME logs</a>
+		  and <a href="https://learn.microsoft.com/en-us/intune/app-management/deployment/troubleshoot-win32#logs-displayed-through-cmtrace">Win32 troubleshooting</a>
+		  on 2026-10-19. These pages do not define a complete event-message parsing contract.</p>
+		</section>
+'@
+
 			$PreContent = @"
 		<header>
 		  <h1>Get-IntuneManagementExtensionDiagnostics ver $ScriptVersion</h1>
 		  <div class="additional-info">
 			<p><strong>Report run:</strong> $ReportRunDateTimeHumanReadable</p>
-			<p><strong>Computer Name:</strong> $ComputerNameForReport</p>
+			<p><strong>Computer Name:</strong> $encodedComputerName</p>
 			<!-- <p><strong>Tenant name:</strong> $TenantDisplayName</p> -->
 			<!-- <p><strong>Tenant id:</strong> $($ConnectMSGraph.TenantId)</p> -->
 		  </div>
@@ -6312,18 +6363,34 @@ do {
 
 
 		$Title = "Get-IntuneManagementExtensionDiagnostics Observed Timeline Report"
-		ConvertTo-HTML -head $head -PostContent $observedTimelineHTML, $ApplicationDownloadStatisticsHTML, $TargetedAppsHTML, $JavascriptPostContent -PreContent $PreContent -Title $Title | Out-File "$ReportSavePath\$HTMLFileName"
-		$Success = $?
-
-		if (-not ($Success)) {
-			Write-Error "Error creating HTML file."
-			Write-Host "Script will exit..."
-			Pause
-			Exit 1
-		}
-		else {
-			Write-Host "Get-IntuneManagementExtensionDiagnostics report HTML file created:`n`t$ReportSavePath\$HTMLFileName`n" -ForegroundColor Green
-		}
+		$postContent = @($InputDiagnosticsHTML, $observedTimelineHTML, $ApplicationDownloadStatisticsHTML, $TargetedAppsHTML, $JavascriptPostContent) |
+			Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+		$reportPath = Join-Path $ReportSavePath $HTMLFileName
+		ConvertTo-HTML -head $head -PostContent ($postContent -join "`n") -PreContent $PreContent -Title $Title |
+			Out-File -LiteralPath $reportPath -Encoding utf8 -ErrorAction Stop
+		$diagnosticsPath = [System.IO.Path]::ChangeExtension($reportPath, '.diagnostics.json')
+		[PSCustomObject]@{
+			SchemaVersion = 1
+			ScriptVersion = $ScriptVersion
+			Source = $InputSourcePath
+			InputMode = if($UsingLocalLogs) { 'Local' } else { 'External' }
+			GeneratedAt = (Get-Date).ToString('o')
+			ParsedRecords = $parsedRecordCount
+			ParsedLines = $ParsedInputLineCount
+			RejectedLines = $rejectedLineCount
+			LinesInTimeRange = $FilteredInputLineCount
+			TimeRangeStart = $LogStartDateTimeObject.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+			TimeRangeEndExclusive = $LogEndDateTimeObject.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+			TimelineEvents = [math]::Max(0, $observedTimeline.Count - 1)
+			Files = @($InputFileDiagnostics | Sort-Object File | Select-Object File, Status, Coverage, Bytes, Lines, Records,
+				ParsedLines, RejectedLines, BlankLines,
+				@{Name='FirstTimestamp';Expression={ if($null -ne $_.FirstTimestamp) { $_.FirstTimestamp.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture) } }},
+				@{Name='LastTimestamp';Expression={ if($null -ne $_.LastTimestamp) { $_.LastTimestamp.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture) } }},
+				Reason)
+			Issues = @($LogParseIssues | Sort-Object File, Line)
+		} | ConvertTo-Json -Depth 6 | Out-File -LiteralPath $diagnosticsPath -Encoding utf8 -ErrorAction Stop
+		Write-Host "Get-IntuneManagementExtensionDiagnostics report HTML file created:`n`t$reportPath`n" -ForegroundColor Green
+		Write-Host "Input diagnostics saved:`n`t$diagnosticsPath`n"
 			
 		############################################################
 		# Open HTML file
@@ -6366,9 +6433,7 @@ do {
 		
 		} # Try creation HTML report end
 		  catch {
-			Write-Error "$($_.Exception.GetType().FullName)"
-			Write-Error "$($_.Exception.Message)"
-			Write-Error "Error creating HTML report: $ReportSavePath\$HTMLFileName"
+			throw "Error creating HTML report or diagnostics in '$ReportSavePath': $($_.Exception.Message)"
 		}
 			
 			
@@ -6405,3 +6470,6 @@ do {
 } While ($SelectedLines.Message -eq 'RELOAD LOG FILE(S).      Select this line and OK button from right botton corner')
 
 #Write-Host "Script end"
+} finally {
+	if($InputArchive) { $InputArchive.Dispose() }
+}
